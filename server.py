@@ -13,7 +13,7 @@ import time
 import json
 import hashlib
 
-from messenger import Messenger, Transport
+from messenger import Messenger, Transport, create_unreliable_transport
 from node import Node
 import time
 
@@ -81,7 +81,7 @@ class Server(Bottle):
         self.transports = {}
         for from_id in range(NUM_NODES):
             for to_id in range(NUM_NODES):
-                transport = Transport(self.nodes[from_id].messenger.out_queues[to_id], self.nodes[to_id].messenger.in_queue, self.r)
+                transport = create_unreliable_transport(self.nodes[from_id].messenger.out_queues[to_id], self.nodes[to_id].messenger.in_queue, self.r)
                 self.transports[(from_id, to_id)] = transport
 
         # start a thread which updates all nodes in a loop
