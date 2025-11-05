@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8000:80"
+    environment:
+      - NUM_NODES=10
+      - GROUP_NAME=Unnamed Group
+      - EXTERNAL_PORT=8000
