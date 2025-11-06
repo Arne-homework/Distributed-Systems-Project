@@ -107,12 +107,12 @@ class UnreliableTransport(Transport):
         return current_time > msg_record.max_delivery_time
 
     def _should_message_be_delivered_now(self, msg_record, t):
-        return msg_record.min_delivery_time < t
+        return msg_record.min_delivery_time <= t
 
     def _create_message_record(self, msg, t):
         rand = self._random_generator.uniform(self._min_delay,self._max_delay) 
         return MessageRecord(t + rand, t + self._max_delay, msg)
-            
+
     def deliver(self,t):
         """handles the messages of the in_qeueue (empties the in_queue) and delivers messages that are not to be dropped or futher delayed to the out_queue
         """
