@@ -40,35 +40,48 @@ class MessageRecord:
 
 
 class QueueWithPeek():
-    """ A queue that supports seeing the first element, without removing it from the queue.
+    """ A queue (FIFO) that supports seeing the first element, without removing it from the queue.
     """
     #uses a simple linked list implementation.
     class _Node():
-        def __init__(self, value, next):
+        def __init__(self, value, next_node):
             self.value = value
-            self.next = next
+            self.next_node = next_node
             
     def __init__(self):
-        self._head = None  # head=None signals an empty queue.
-        
+        # constraint: either _head and _end both are None (empty queue) or both are not None.
+        self._head = None  
+        self._end = None
+
     def put(self, value):
-        self._head = self._Node(value, self._head)
+        """Add a new value to the queue"""
+        new_node = self._Node(value, None)
+        if self._head is None:
+            self._head = new_node
+        else:
+            self._end.next_node = new_node
+        self._end = new_node
 
     def empty(self):
+        """ check if the queue is empty"""
         return self._head is None
 
     def peek(self):
+        """get the next value from the queue without removing it from the queue"""
         if self._head is None:
             raise queue.Empty()
         else:
             return self._head.value
 
     def get(self):
+        """get the next value from the queue and remove it"""
         if self._head is None:
             raise queue.Empty()
         else:
             value = self._head.value
-            self._head = self._head.next
+            self._head = self._head.next_node
+            if self._head is None:
+                self._end = None
             return value
 
 
@@ -128,25 +141,34 @@ class UnreliableTransport(Transport):
 
 
     def _should_message_be_dropped(self) :
-        return (self._random_generator.uniform(0,1) < self._drop_rate)
+        rand = self._random_generator.uniform(0,1)
+#        print(f"Should message be droppend? {rand} <{self._drop_rate}")
+        return (rand < self._drop_rate)
 
     def _is_message_overdelayed(self, msg_record, current_time):
         return current_time > msg_record.max_delivery_time
 
+    def _should_message_be_delivered_now(self, msg_record, t):
+        return msg_record.min_delivery_time < t
+
+    def _create_message_record(self, msg, t):
+        rand = self._random_generator.uniform(self._min_delay,self._max_delay) 
+        return MessageRecord(msg,t + rand, t + self._max_delay)
+            
     def deliver(self,t):
         """handles the messages of the in_qeueue (empties the in_queue) and delivers messages that are not to be dropped or futher delayed to the out_queue
         """
         while not self.in_queue.empty():
             msg = self.in_queue.get()
             if(not self._should_message_be_dropped() ):
-                self._delay_queue.put(MessageRecord(msg,t+self._min_delay, t+self._max_delay))
+                self._delay_queue.put(self._create_message_record(msg,t))
 
         while not self._delay_queue.empty():
             msg_record = self._delay_queue.peek()
             if self._is_message_overdelayed(msg_record, t):
                 msg_record = self._delay_queue.get()
-                self._overdelay_resolution_strategy(out_queue, t, msg_record)
-            elif self._random_generator.uniform(msg_record.min_delivery_time,msg_record.max_delivery_time) < t:
+                self._overdelay_resolution_strategy(self.out_queue, t, msg_record)
+            elif self._should_message_be_delivered_now(msg_record,t):
                 msg = self._delay_queue.get().msg
                 print(f"Delivering message at time {t}: {msg}")
                 self.out_queue.put(msg)
