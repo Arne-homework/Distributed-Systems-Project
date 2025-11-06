@@ -1,4 +1,6 @@
 import json
+from dataclasses import dataclass,field
+from typing import Any
 import os
 import queue
 import random
@@ -20,7 +22,7 @@ class Message:
     def get_content(self):
         return json.loads(self.content)
 
-
+    
 class MessageQueue(queue.SimpleQueue[Message]):
     pass
 
@@ -30,59 +32,15 @@ def create_unreliable_transport(
         r:random.Random):
         return UnreliableTransport(in_queue, out_queue, r, DROP_RATE, MIN_DELAY, MAX_DELAY )
 
-
+@dataclass(order=True)
 class MessageRecord:
-    def __init__(self, msg:Message, min_delivery_time:float, max_delivery_time):
-        self.msg=msg
-        self.min_delivery_time=min_delivery_time
-        self.max_delivery_time=max_delivery_time
+    min_delivery_time:float
+    max_delivery_time:float = field(compare=False)
+    msg : Message = field(compare=False)
+    
+class DelayQueue(queue.PriorityQueue[MessageRecord]):
+    pass
 
-
-
-class QueueWithPeek():
-    """ A queue (FIFO) that supports seeing the first element, without removing it from the queue.
-    """
-    #uses a simple linked list implementation.
-    class _Node():
-        def __init__(self, value, next_node):
-            self.value = value
-            self.next_node = next_node
-            
-    def __init__(self):
-        # constraint: either _head and _end both are None (empty queue) or both are not None.
-        self._head = None  
-        self._end = None
-
-    def put(self, value):
-        """Add a new value to the queue"""
-        new_node = self._Node(value, None)
-        if self._head is None:
-            self._head = new_node
-        else:
-            self._end.next_node = new_node
-        self._end = new_node
-
-    def empty(self):
-        """ check if the queue is empty"""
-        return self._head is None
-
-    def peek(self):
-        """get the next value from the queue without removing it from the queue"""
-        if self._head is None:
-            raise queue.Empty()
-        else:
-            return self._head.value
-
-    def get(self):
-        """get the next value from the queue and remove it"""
-        if self._head is None:
-            raise queue.Empty()
-        else:
-            value = self._head.value
-            self._head = self._head.next_node
-            if self._head is None:
-                self._end = None
-            return value
 
 
 class Transport:
@@ -120,7 +78,7 @@ class UnreliableTransport(Transport):
                   #   or send it which results in a delay > max_delay.
                   ):
         super().__init__(in_queue, out_queue, r)
-        self._delay_queue=QueueWithPeek()
+        self._delay_queue=DelayQueue()
         self._overdelay_resolution_strategy=overdelay_resolution_strategy
         self.set_random_generator(r)
         self.set_drop_rate(drop_rate)
@@ -153,7 +111,7 @@ class UnreliableTransport(Transport):
 
     def _create_message_record(self, msg, t):
         rand = self._random_generator.uniform(self._min_delay,self._max_delay) 
-        return MessageRecord(msg,t + rand, t + self._max_delay)
+        return MessageRecord(t + rand, t + self._max_delay, msg)
             
     def deliver(self,t):
         """handles the messages of the in_qeueue (empties the in_queue) and delivers messages that are not to be dropped or futher delayed to the out_queue
@@ -164,17 +122,17 @@ class UnreliableTransport(Transport):
                 self._delay_queue.put(self._create_message_record(msg,t))
 
         while not self._delay_queue.empty():
-            msg_record = self._delay_queue.peek()
+            msg_record = self._delay_queue.get()
             if self._is_message_overdelayed(msg_record, t):
-                msg_record = self._delay_queue.get()
                 self._overdelay_resolution_strategy(self.out_queue, t, msg_record)
             elif self._should_message_be_delivered_now(msg_record,t):
-                msg = self._delay_queue.get().msg
+                msg = msg_record.msg
                 print(f"Delivering message at time {t}: {msg}")
                 self.out_queue.put(msg)
             else:
+                self._delay_queue.put(msg_record)
                 break
-            
+
                 
 class Messenger:
     def __init__(self, own_id, num_out: int):
