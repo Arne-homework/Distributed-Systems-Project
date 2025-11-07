@@ -5,8 +5,5 @@ services:
       - "127.0.0.1:8000:80"
     environment:
       - NUM_NODES=10
-      - GROUP_NAME=Group09
+      - GROUP_NAME=Unnamed Group
       - EXTERNAL_PORT=8000
-      - DROP_RATE=0.3
-      - MIN_DELAY=10.0
-      - MAX_DELAY=20.0

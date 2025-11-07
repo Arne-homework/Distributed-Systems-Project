@@ -13,7 +13,7 @@ import time
 import json
 import hashlib
 
-from messenger import Messenger, Transport, create_unreliable_transport
+from messenger import Messenger, Transport, UnreliableTransport
 from node import Node
 import time
 
@@ -78,10 +78,19 @@ class Server(Bottle):
             self.nodes.append(n)
 
         # define transport from one server to all others
+        # Start with reliable transport for basic implementation
+        # Students will enable unreliable transport for Task 4 (Medium/Hard scenarios)
         self.transports = {}
         for from_id in range(NUM_NODES):
             for to_id in range(NUM_NODES):
-                transport = create_unreliable_transport(self.nodes[from_id].messenger.out_queues[to_id], self.nodes[to_id].messenger.in_queue, self.r)
+                # Use Transport for perfect/reliable delivery (no delays, no drops)
+                transport = Transport(self.nodes[from_id].messenger.out_queues[to_id], self.nodes[to_id].messenger.in_queue, self.r)
+
+                # Replace with UnreliableTransport and configure delays/drops
+                # transport = UnreliableTransport(self.nodes[from_id].messenger.out_queues[to_id], self.nodes[to_id].messenger.in_queue, self.r)
+                # transport.set_delay(0.5, 2.0)  # 0.5-2.0 second delay
+                # transport.set_drop_rate(0.1)   # 10% packet loss
+
                 self.transports[(from_id, to_id)] = transport
 
         # start a thread which updates all nodes in a loop

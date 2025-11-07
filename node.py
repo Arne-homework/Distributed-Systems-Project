@@ -56,16 +56,68 @@ class Node:
         return list(map(lambda entry: entry.to_dict(), ordered_entries))
 
     def create_entry(self, value):
-        e = Entry("test", value)
-        for i in self.other_servers:
-            print("Sending message from {} to {}".format(self.own_id, i))
-            self.messenger.send(i, messenger.Message("Hello from {}".format(self.own_id)))
-        self.board.add_entry(e)
+        """
+        Create a new entry by sending an 'add_entry' request to the coordinator (node 0).
+        The coordinator will handle the rest.
+        """
+        print(f"Node {self.own_id}: Sending 'add_entry' request to coordinator for value: {value}")
+        self.messenger.send(0, messenger.Message({
+            'type': 'add_entry',
+            'entry_value': value
+        }))
 
     def update_entry(self, entry_id, value):
-        pass # todo
+        pass  # TODO (Optional Task 4): Implement update logic similar to create_entry
+
+    def delete_entry(self, entry_id):
+        pass  # TODO (Optional Task 4): Implement delete logic similar to create_entry
+
+    def handle_message(self, message):
+        """
+        Handle incoming messages for the coordinator pattern.
+
+        We provide a basic implementation:
+        - If a node wants to add a new entry, it sends an 'add_entry' message to the coordinator
+        - The coordinator propagates it to all servers (including itself)
+        - If a node receives a 'propagate' message, it adds the entry to the board
+
+        Note: This implementation has some issues!
+        """
+        msg_content = message.get_content()
+
+        if 'type' not in msg_content:
+            print(f"Node {self.own_id}: Received message without type: {msg_content}")
+            return
+
+        msg_type = msg_content['type']
+
+        if msg_type == 'add_entry':
+            # Only coordinator should receive this
+            assert self.own_id == 0, "Only coordinator (node 0) should receive 'add_entry' messages"
+
+            entry_value = msg_content['entry_value']
+            print(f"Coordinator: Received add_entry for '{entry_value}', broadcasting to all nodes")
+
+            for node_id in self.all_servers:
+                self.messenger.send(node_id, messenger.Message({
+                    'type': 'propagate',
+                    'entry_value': entry_value
+                }))
+
+        elif msg_type == 'propagate':
+            entry_value = msg_content['entry_value']
+            # Let's hope this is from the coordinator
+            # Each node assigns its own ID... what could go wrong?
+            self.status['num_entries'] += 1
+            entry = Entry(self.status['num_entries'], entry_value)
+            self.board.add_entry(entry)
+            print(f"Node {self.own_id}: Added entry ID {self.status['num_entries']} with value '{entry_value}'")
 
     def update(self, t: float):
+        """
+        Called periodically by the server to process incoming messages.
+        """
         msgs = self.messenger.receive()
         for msg in msgs:
-            print("Node {} received message: {}".format(self.own_id, msg))
+            print(f"Node {self.own_id} received message at time {t}: {msg}")
+            self.handle_message(msg)
