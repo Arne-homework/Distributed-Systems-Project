@@ -1,10 +1,10 @@
 import json
 import queue
 import random
-from typing import List
+from typing import List,Any
 
 
-class Message:
+class NetworkMessage:
     def __init__(self, content):
         self.content = json.dumps(content)  # store as JSON string so it remains immutable!
         self.len = len(self.content)
@@ -14,9 +14,8 @@ class Message:
 
     def get_content(self):
         return json.loads(self.content)
-
-
-class MessageQueue(queue.SimpleQueue[Message]):
+    
+class MessageQueue(queue.SimpleQueue[NetworkMessage]):
     pass
 
 
@@ -102,24 +101,52 @@ class UnreliableTransport(Transport):
         # Update buffer with only the messages that haven't been delivered yet
         self.buffered_messages = remaining_messages
 
+class MessengerMessage:
+
+    @staticmethod
+    def from_dictionary(dictionary):
+        return MessengerMessage(
+            dictionary["source"],
+            dictionary["destination"],
+            dictionary["content"]
+        )
+    
+    
+    def __init__(self, source, destination, content):
+        self.source = source
+        self.destination = destination
+        self.content = content
+
+    def as_dictionary(self):
+        return {
+            "source":self.source,
+            "destination":self.destination,
+            "content":self.content
+            }
+        
+    
+
 class Messenger:
     def __init__(self, own_id, num_out: int):
         self.own_id = own_id
         self.in_queue = MessageQueue()
-        self.out_queues = {i: MessageQueue() for i in range(num_out)}
-
-    def send(self, destination, msg: Message): # TODO: Maybe add from and to fields to Message?
+        self.out_queues = {i: MessageQueue() for i in range(num_out) }
+    
+    def send(self, destination, content: Any): # TODO: Maybe add from and to fields to Message?
         assert (destination in self.out_queues)
-        self.out_queues[destination].put(msg)
+        msg =MessengerMessage(self.own_id, destination, content)
+        
+        self.out_queues[destination].put(NetworkMessage(msg.as_dictionary()))
 
     def has_message(self) -> bool:
         return not self.in_queue.empty()
 
-    def receive(self) -> List[Message]:
-        msgs = []
+    def receive(self) -> List[tuple[int,Any]]:
+        contents = []
         while not self.in_queue.empty():
             print("Messenger {} received message".format(self.own_id))
-            msgs.append(self.in_queue.get())
-        return msgs
+            msg = MessengerMessage.from_dictionary(self.in_queue.get().get_content())
+            contents.append((msg.source, msg.content))
+        return contents
 
 
