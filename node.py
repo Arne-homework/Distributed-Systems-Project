@@ -61,10 +61,10 @@ class Node:
         The coordinator will handle the rest.
         """
         print(f"Node {self.own_id}: Sending 'add_entry' request to coordinator for value: {value}")
-        self.messenger.send(0, messenger.Message({
+        self.messenger.send(0, {
             'type': 'add_entry',
             'entry_value': value
-        }))
+        })
 
     def update_entry(self, entry_id, value):
         pass  # TODO (Optional Task 4): Implement update logic similar to create_entry
@@ -83,7 +83,7 @@ class Node:
 
         Note: This implementation has some issues!
         """
-        msg_content = message.get_content()
+        msg_content = message
 
         if 'type' not in msg_content:
             print(f"Node {self.own_id}: Received message without type: {msg_content}")
@@ -99,10 +99,10 @@ class Node:
             print(f"Coordinator: Received add_entry for '{entry_value}', broadcasting to all nodes")
 
             for node_id in self.all_servers:
-                self.messenger.send(node_id, messenger.Message({
+                self.messenger.send(node_id, {
                     'type': 'propagate',
                     'entry_value': entry_value
-                }))
+                })
 
         elif msg_type == 'propagate':
             entry_value = msg_content['entry_value']
@@ -117,7 +117,7 @@ class Node:
         """
         Called periodically by the server to process incoming messages.
         """
-        msgs = self.messenger.receive()
-        for msg in msgs:
+        msgs = self.messenger.receive(t)
+        for source,msg in msgs:
             print(f"Node {self.own_id} received message at time {t}: {msg}")
             self.handle_message(msg)

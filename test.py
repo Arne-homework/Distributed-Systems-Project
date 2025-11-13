@@ -10,7 +10,7 @@ Modify the parameters below to test different scenarios:
 
 import random
 import time
-from messenger import Message, Messenger, Transport, UnreliableTransport
+from messenger import  Messenger, ReliableMessenger, Transport, UnreliableTransport
 from node import Node
 
 # ============================================================
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     r = random.Random(42)
     nodes = []
     for i in range(NUM_SERVERS):
-        m = Messenger(i, NUM_SERVERS)
+        m = ReliableMessenger(i, NUM_SERVERS, timeout=3, window_size=100)
         n = Node(m, i, NUM_SERVERS, r)
         nodes.append(n)
 
@@ -113,7 +113,7 @@ if __name__ == "__main__":
 
     # Run simulation long enough for all messages to be delivered
     # Adjust duration based on scenario (harder scenarios might need more time)
-    duration = 10.0
+    duration = 100.0
 
     print(f"Running simulation for {duration}s...")
     run_simulation(nodes, transports, duration_seconds=duration)
