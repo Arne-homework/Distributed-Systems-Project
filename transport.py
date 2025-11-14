@@ -1,6 +1,9 @@
 import json
 import queue
 import random
+import logging
+
+logger=logging.getLogger(__name__)
 
 class NetworkMessage:
     def __init__(self, content):
@@ -30,7 +33,7 @@ class Transport:
         # use the time parameter to ensure replayability
         while not self.in_queue.empty():
             msg = self.in_queue.get()
-            print("Delivering message at time {}: {}".format(t, msg))
+            logger.info("Delivering message at time {}: {}".format(t, msg))
             self.out_queue.put(msg)
 
 
@@ -78,7 +81,7 @@ class UnreliableTransport(Transport):
 
             # Decide whether to drop this message
             if self.r.random() < self.drop_rate:
-                print(f"Dropping message at time {t}: {msg}")
+                logger.info(f"Dropping message at time {t}: {msg}")
                 continue  # Message is lost
 
             # Calculate random delay for this message
@@ -94,7 +97,7 @@ class UnreliableTransport(Transport):
         for delivery_time, msg in self.buffered_messages:
             if t >= delivery_time:
                 # Time to deliver this message
-                print(f"Delivering message at time {t}: {msg}")
+                logger.info(f"Delivering message at time {t}: {msg}")
                 self.out_queue.put(msg)
             else:
                 # Not ready yet, keep in buffer

@@ -12,7 +12,7 @@ import random
 import time
 from messenger import  Messenger, ReliableMessenger, Transport, UnreliableTransport
 from node import Node
-
+import logging_config
 # ============================================================
 # TEST CONFIGURATION
 # ============================================================

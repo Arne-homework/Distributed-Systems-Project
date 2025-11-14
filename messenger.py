@@ -1,4 +1,8 @@
+"""
+
+"""
 import random
+import logging
 from typing import List,Any
 from transport import NetworkMessage,MessageQueue, Transport, UnreliableTransport
 
@@ -8,12 +12,14 @@ class OutOfResourceError(Exception):
 class ProtocollError(Exception):
     pass
 
+logger = logging.getLogger(__name__)
+
 WINDOW_SIZE = 10
 TIMEOUT = 10
 
 class MessengerMessage:
     """
-    Message containing the id of the source and destination.
+    Message wrapping a higher level message containing the id of the source and destination.
     """
     @staticmethod
     def from_dictionary(dictionary):
@@ -58,16 +64,25 @@ class Messenger:
     def receive(self) -> List[tuple[int,Any]]:
         contents = []
         while not self.in_queue.empty():
-            print("Messenger {} received message".format(self.own_id))
+            logger.info("Messenger {} received message".format(self.own_id))
             msg = MessengerMessage.from_dictionary(self.in_queue.get().get_content())
             contents.append((msg.source, msg.content))
         return contents
 
 
 class OutboundBuffer:
+    """
+    Buffer for ReliableMessenger to hold outbound messages.
+
+    The Buffer holds a fixed amount (capacity)  values however it indexes them from the beginning of all values ever inserted 
+    """
     class EmptySentinel:
+        def __repr__(self):
+            return "<empty>"
+
         def __str__(self):
             return "empty"
+        
     empty = EmptySentinel() # special object, denoting empty slot.
 
     def __init__(self, capacity):
@@ -82,17 +97,28 @@ class OutboundBuffer:
 
     @property
     def start(self):
+        """Index of the first value currently in the buffer.
+
+        0-indexed
+        """
         return self._start
 
     @property
     def size(self):
+        """Number of values currently in the buffer"""
         return self._size
 
     @property
     def end(self):
+        """One after the last message currently in the buffer."""
         return self._start + self._size
     
     def __getitem__(self, i):
+        """
+        Access value in the buffer by index.
+
+        throws an IndexError if value not currently in the buffer.
+        """
         if i < self._start:
             raise IndexError()
         elif i > self._start + self._size:
@@ -101,6 +127,7 @@ class OutboundBuffer:
             return self._values[( i) % self._capacity]
             
     def drop(self):
+        """Remove and return the value with the lowest index from the buffer."""
         value = self._values[(self._start) % self._capacity]
         self._values[(self._start) % self._capacity] = self.empty
         self._start += 1
@@ -108,8 +135,13 @@ class OutboundBuffer:
         return value
 
     def append(self, value):
+        """
+        Append another value to the buffer.
+
+        Throws an Out of OutOfResourceError if not enough slots in the buffer.
+        """
         if self._size >= self._capacity:
-            raise IndexError()
+            raise OutOfResourceError("Buffer full")
         self._values[(self._start + self._size) % self._capacity] = value
         self._size += 1
 
@@ -139,7 +171,9 @@ class ConnectionMessage:
 
     
 class Connection:        
-            
+    """
+    Handles the connection of one 
+    """
     def __init__(self, own_id, remote_id, out_queue, messenger_message_factory, window_size=WINDOW_SIZE, timeout=TIMEOUT):
         self.own_id = own_id
         self.remote_id = remote_id
@@ -158,6 +192,7 @@ class Connection:
                 content_id,
                 content
             ).as_dictionary())
+        logger.debug(f"Connection: content send:{msg.as_dictionary()}")
         self.out_queue.put(NetworkMessage(msg.as_dictionary()))
 
     def _send_ack(self, value):
@@ -169,6 +204,7 @@ class Connection:
                 value,
                 content
             ).as_dictionary())
+        logger.debug(f"Connection: ack send:{msg.as_dictionary()}")
         self.out_queue.put(NetworkMessage(msg.as_dictionary()))
     
     def send(self, content):
@@ -269,7 +305,7 @@ class ReliableMessenger:
         contents = self._shortcut_buffer
         self._shortcut_buffer = []
         while not self.in_queue.empty():
-            print("Messenger {} received message".format(self._own_id))
+            logger.info("Messenger {} received message".format(self._own_id))
             messenger_message = MessengerMessage.from_dictionary(self.in_queue.get().get_content())
             messages = self._connections[messenger_message.source].receive(messenger_message.content, t)
             contents.extend([(messenger_message.source, content) for content in messages])

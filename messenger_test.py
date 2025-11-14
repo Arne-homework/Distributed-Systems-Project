@@ -1,6 +1,8 @@
 import unittest as ut
 from unittest.mock import Mock
 import random
+import logging
+import logging_config
 from messenger import Messenger,MessengerMessage,ReliableMessenger,Connection, UnreliableTransport,MessageQueue
 
 class Object():
