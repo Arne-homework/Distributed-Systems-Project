@@ -68,7 +68,7 @@ class Server(Bottle):
         self.get('/<filename:path>', callback=serve_static_file)
 
         self.r = random.Random(42)  # use a fixed seed for replayability
-
+        self._time = 0.0
         self.nodes = []
 
         # define nodes
@@ -115,6 +115,7 @@ class Server(Bottle):
 
             # update all alive nodes, note that we lock!
             with self.lock:
+                self._time = t
                 for node in rand_nodes:
                     if not node.is_crashed():
                         try:
@@ -200,7 +201,7 @@ class Server(Bottle):
             entry_value = request.forms.get('value')
 
             with self.lock:
-                return self.nodes[node_id].create_entry(entry_value)
+                return self.nodes[node_id].create_entry(entry_value, self._time)
 
         except Exception as e:
             print("[ERROR] " + str(e))
@@ -215,7 +216,7 @@ class Server(Bottle):
             entry_value = request.forms.get('value')
 
             with self.lock:
-                return self.nodes[node_id].update_entry(entry_id, entry_value)
+                return self.nodes[node_id].update_entry(entry_id, entry_value, self._time)
         except Exception as e:
             print("[ERROR] " + str(e))
             raise e
@@ -229,7 +230,7 @@ class Server(Bottle):
             entry_value = request.forms.get('value')
 
             with self.lock:
-                return self.nodes[node_id].delete_entry(entry_id)
+                return self.nodes[node_id].delete_entry(entry_id, self._time)
 
         except Exception as e:
             print("[ERROR] " + str(e))

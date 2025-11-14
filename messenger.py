@@ -16,10 +16,11 @@ logger = logging.getLogger(__name__)
 
 WINDOW_SIZE = 10
 TIMEOUT = 10
+__all__ = ["MessageQueue", "Transport", "UnreliableTransport", "Messenger", "ReliableMessenger"]
 
 class MessengerMessage:
     """
-    Message wrapping a higher level message containing the id of the source and destination.
+    Message wrapping a higher level message.
     """
     @staticmethod
     def from_dictionary(dictionary):
@@ -125,6 +126,19 @@ class OutboundBuffer:
             raise IndexError()
         else:
             return self._values[( i) % self._capacity]
+
+    def __setitem__(self, i, value):
+        """
+        Access value in the buffer by index.
+
+        throws an IndexError if value not currently in the buffer.
+        """
+        if i < self._start:
+            raise IndexError()
+        elif i > self._start + self._size:
+            raise IndexError()
+        else:
+            self._values[( i) % self._capacity] = value
             
     def drop(self):
         """Remove and return the value with the lowest index from the buffer."""
@@ -145,7 +159,9 @@ class OutboundBuffer:
         self._values[(self._start + self._size) % self._capacity] = value
         self._size += 1
 
-    
+    def create_empty_slot(self):
+        self.append(self.empty)
+        
         
 class ConnectionMessage:
     @staticmethod
@@ -172,17 +188,100 @@ class ConnectionMessage:
     
 class Connection:        
     """
-    Handles the connection of one 
+    Handles the connection of one node to a specific other node in a ReliableMessenger.
     """
-    def __init__(self, own_id, remote_id, out_queue, messenger_message_factory, window_size=WINDOW_SIZE, timeout=TIMEOUT):
+    
+    def __init__(self, own_id, remote_id, out_queue, messenger_message_factory, window_size=WINDOW_SIZE, timeout=TIMEOUT): 
         self.own_id = own_id
         self.remote_id = remote_id
         self.out_queue = out_queue
         self._out_buffer = OutboundBuffer(window_size)
-        self._last_received = 0
-        self._last_ack_time = None
+        self._in_buffer = OutboundBuffer(window_size)
         self._timeout = timeout
         self._messenger_message_factory = messenger_message_factory
+
+    def send(self, content:Any, time:float):
+        """
+        Send the content in a message.
+
+        Content must be serilizable.
+        """
+        try:
+            self._out_buffer.append((time+self._timeout,content))
+        except IndexError:
+            raise OutOfResourceError("No space in the out_buffer. Try again later")
+        else:
+            self._send_content(self._out_buffer.end, content)
+
+    def receive(self, message_dict, time)->List[Any]:
+        """
+        Handle receiving a message.
+
+        message_dict must be a dictionary that can be loaded into a ConnectionMessage.
+        time is the current time.
+        """
+        message = ConnectionMessage.from_dictionary(message_dict)
+        if message.typ == "content":
+            if not( self._in_buffer.size == 0 or self._in_buffer[self._in_buffer.start] is self._in_buffer.empty):
+                pass
+            if message.value > self._in_buffer.end:
+                for _ in range(self._in_buffer.end, message.value):
+                    self._in_buffer.create_empty_slot()
+            assert message.value > 0
+            try:
+                self._in_buffer[message.value-1] = message.content
+            except IndexError:
+                pass
+            contents = []
+            next_to_send = self._in_buffer.start
+            for pos in range(self._in_buffer.start,self._in_buffer.end):
+                if self._in_buffer[pos] is not self._in_buffer.empty:
+                    next_to_send = pos + 1
+                    content = self._in_buffer.drop()
+                    contents.append(content)
+                else:
+                    break
+            self._send_ack(next_to_send)
+            return contents
+        elif message.typ == "ack":
+            self._receive_handle_ack(message.value,time)
+            return []
+        else:
+            raise Exception(f"unkown connection message type:{message.typ}")
+        
+    def wake_up(self, time):
+        """
+        To be called regularly.
+
+        t is the current time.
+        
+        - resends messages if timeout is reached.
+        """
+        if self._out_buffer.size == 0:
+            #if no messages are waiting to be delivered, nothing to do.
+            return
+        else:
+            for i in range(self._out_buffer.start,self._out_buffer.end):
+                timeout_time,content = self._out_buffer[i]
+                if timeout_time <= time:
+                    
+                    self._send_content(i+1,
+                                       content)
+                    self._out_buffer[i] = (time+self._timeout,content)
+
+    def _receive_handle_ack(self, ack, t):
+        logger.debug(f"received ack={ack}, at time {t}")
+        if (ack <= self._out_buffer.start):
+            pass
+        elif ack > self._out_buffer.end:
+            #TODO: think if we can recover from this.
+            # Probably not, this is a major Protocol violation. We have no idea what happened on the other side.  
+            raise ProtocolError("acknowledged unsend message")
+        else:
+            i = 0
+            while ack > self._out_buffer.start:
+                i+=1
+                self._out_buffer.drop()
 
     def _send_content(self, content_id,content):
         typ = "content"
@@ -207,70 +306,6 @@ class Connection:
         logger.debug(f"Connection: ack send:{msg.as_dictionary()}")
         self.out_queue.put(NetworkMessage(msg.as_dictionary()))
     
-    def send(self, content):
-        try:
-            self._out_buffer.append(content)
-        except IndexError:
-            raise OutOfResourceError("No space in the out_buffer. Try again later")
-        else:
-            self._send_content(self._out_buffer.end, content)
-
-    def _receive_handle_ack(self, ack, t):
-        if (ack <= self._out_buffer.start):
-            pass
-        elif ack > self._out_buffer.end:
-            # just throw.
-            #TODO: think if we can recover from this.
-            raise ProtocolError("acknowledged unsend message")
-        else:
-            i = 0
-            while ack > self._out_buffer.start:
-                i+=1
-                self._out_buffer.drop()
-
-            if self._out_buffer.size == 0:
-                self._last_ack_time = None
-            else:
-                self._last_ack_time = t
-
-    def receive(self, message_dict, t):
-        message = ConnectionMessage.from_dictionary(message_dict)
-        if message.typ == "content":
-            if message.value != self._last_received + 1:
-                #message has arrived out of order
-                return[]
-            self._last_received += 1
-            self._send_ack(self._last_received)
-            return [message.content]
-        elif message.typ == "ack":
-            self._receive_handle_ack(message.value,t)
-            return []
-        else:
-            raise Exception(f"unkown connection message type:{message.typ}")
-        
-    def wake_up(self, t):
-        """ to be called regularly
-
-        resends messages if timeout is reached
-        """
-        if self._out_buffer.size == 0:
-            #if no messages are waiting to be delivered, nothing to do.
-            return
-        elif self._last_ack_time is None:
-            # if a message was send out since :
-            # set the current time as delivery time.
-            # because send doesn't give us a time.
-            self._last_ack_time = t
-            return
-        elif self._last_ack_time + self._timeout > t:
-            #if timeout not yet reached: do nothing.
-            return
-        elif self._last_ack_time + self._timeout <= t:
-            #timeout reached, resend all buffered messages.
-            for i in range(self._out_buffer.size):
-                self._send_content(self._out_buffer.start+i+1,
-                                   self._out_buffer[self._out_buffer.start+i])
-
 class ReliableMessenger:
     def __init__(self, own_id, num_out:int, timeout=TIMEOUT, window_size=WINDOW_SIZE):
         connections, out_queues = self._create_connections(own_id, num_out, timeout, window_size)
@@ -295,13 +330,30 @@ class ReliableMessenger:
             connections[i] = Connection(own_id, i, out_queues[i], make_messenger_message_factory(own_id, i ), timeout=timeout, window_size=window_size)
         return connections, out_queues
 
-    def send(self, destination, content: Any):
+    def send(self, destination, content: Any, time:float):
+        """
+        Send content in a message.
+
+        content must be serializable
+        time is the current time.
+        """
         if destination == self._own_id:
             self._shortcut_buffer.append((self._own_id,content))
         else:
-            self._connections[destination].send(content)
+            self._connections[destination].send(content, time)
 
     def receive(self, t:float)-> List[tuple[int,Any]]:
+        """
+        Check for any messages recieved and return their content as a tuple (source, content).
+
+        t is the current time.
+        """
+        # as there is only one in_queue for all remote nodes,
+        #  ReliableMessenger receives it
+        #  and then dispatches it to the relevant connection.
+        #  connection then handles acknowledgments, out of order deliveries, missing messages.
+        #  This also means that a MessengerMessage needs to wrap a ConnectionMessage, not the other way around.
+        #  Which is why the Messenger inject a messenger_message_factory into Connection.
         contents = self._shortcut_buffer
         self._shortcut_buffer = []
         while not self.in_queue.empty():

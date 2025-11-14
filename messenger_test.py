@@ -3,7 +3,10 @@ from unittest.mock import Mock
 import random
 import logging
 import logging_config
+import sys
 from messenger import Messenger,MessengerMessage,ReliableMessenger,Connection, UnreliableTransport,MessageQueue
+
+logging.basicConfig(stream=sys.stdout, force=True,level=logging.WARNING)
 
 class Object():
     pass
@@ -15,7 +18,6 @@ class TestConnection(ut.TestCase):
         return make_messenger_message
 
     def test_simple_send(self):
-        
         out_queue = MessageQueue()
         conn = Connection(
             0,
@@ -23,7 +25,7 @@ class TestConnection(ut.TestCase):
             out_queue,
             self.make_messenger_message_factory(0,1)
         )
-        conn.send("Hello World")
+        conn.send("Hello World", 0.0)
         self.assertFalse(out_queue.empty())
         message = out_queue.get()
         self.assertEqual(message.get_content(), {"source": 0, "destination": 1, "content": {"typ": "content", "value": 1, "content": "Hello World"}})
@@ -31,8 +33,11 @@ class TestConnection(ut.TestCase):
 
         
 class TestMessenger(ut.TestCase):
+
+    def _make_unreliable_transport(self, out_queue, in_queue, randomizer):
+        return UnreliableTransport(out_queue, in_queue, randomizer) 
+
     def test_delivery_with_unreliable_transport3(self):
-    
         messenger_0 = ReliableMessenger(0,2)
         messenger_1 = ReliableMessenger(1,2)
 
@@ -48,7 +53,7 @@ class TestMessenger(ut.TestCase):
 
         contents = [f"Hello {i}" for i in range(10)]
         for content in contents:
-            messenger_0.send(1,content)
+            messenger_0.send(1,content, 0.0)
 
         out_contents = []
         time_limit, time_step = 100,0.02
@@ -61,11 +66,10 @@ class TestMessenger(ut.TestCase):
             self.assertEqual(len(contents0_out),0)
             contents1_out = messenger_1.receive(t)
             out_contents.extend([y for (x,y) in contents1_out])
+            if len(out_contents) == len(contents):
+                break
 
         self.assertEqual(contents, out_contents)
-
-    def _make_unreliable_transport(self, out_queue, in_queue, randomizer):
-        return UnreliableTransport(out_queue, in_queue, randomizer) 
 
     def test_delivery_with_unreliable_transport1(self):
         """ if the original message is dropped it is still delivered"""
@@ -87,7 +91,7 @@ class TestMessenger(ut.TestCase):
             ]
         transports[0].set_drop_rate(0.5)
         content = "Hello 1"
-        messenger_0.send(1, content)
+        messenger_0.send(1, content, 0.0)
 
         # first the message is dropped.
         for transport in transports:

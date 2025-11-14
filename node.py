@@ -55,7 +55,7 @@ class Node:
         ordered_entries = self.board.get_ordered_entries()
         return list(map(lambda entry: entry.to_dict(), ordered_entries))
 
-    def create_entry(self, value):
+    def create_entry(self, value, time):
         """
         Create a new entry by sending an 'add_entry' request to the coordinator (node 0).
         The coordinator will handle the rest.
@@ -64,15 +64,15 @@ class Node:
         self.messenger.send(0, {
             'type': 'add_entry',
             'entry_value': value
-        })
+        }, time)
 
-    def update_entry(self, entry_id, value):
+    def update_entry(self, entry_id, value, time):
         pass  # TODO (Optional Task 4): Implement update logic similar to create_entry
 
-    def delete_entry(self, entry_id):
+    def delete_entry(self, entry_id, time):
         pass  # TODO (Optional Task 4): Implement delete logic similar to create_entry
 
-    def handle_message(self, message):
+    def handle_message(self, message, time):
         """
         Handle incoming messages for the coordinator pattern.
 
@@ -102,7 +102,7 @@ class Node:
                 self.messenger.send(node_id, {
                     'type': 'propagate',
                     'entry_value': entry_value
-                })
+                }, time)
 
         elif msg_type == 'propagate':
             entry_value = msg_content['entry_value']
@@ -120,4 +120,4 @@ class Node:
         msgs = self.messenger.receive(t)
         for source,msg in msgs:
             print(f"Node {self.own_id} received message at time {t}: {msg}")
-            self.handle_message(msg)
+            self.handle_message(msg, t)

@@ -109,11 +109,11 @@ if __name__ == "__main__":
 
     for i in range(NUM_ENTRIES):
         for server_id in range(NUM_SERVERS):
-            nodes[server_id].create_entry(f"Server{server_id}_Entry{i}")
+            nodes[server_id].create_entry(f"Server{server_id}_Entry{i}",0.0)
 
     # Run simulation long enough for all messages to be delivered
     # Adjust duration based on scenario (harder scenarios might need more time)
-    duration = 100.0
+    duration = 10.0
 
     print(f"Running simulation for {duration}s...")
     run_simulation(nodes, transports, duration_seconds=duration)
