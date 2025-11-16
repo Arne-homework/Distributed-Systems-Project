@@ -53,7 +53,8 @@ class Node:
         self.status = {
             "crashed": False,
             "notes": "",
-            "num_entries": 0,  # we use this to generate ids for the entries
+            "num_entries": 0,  
+            "max_id":0, # we use this to generate ids for the entries
         }
         self.r = r
 
@@ -121,11 +122,13 @@ class Node:
         if msg_type == 'entry_change_request':
             # Only coordinator should receive this
             assert self.own_id == 0, "Only coordinator (node 0) should receive 'entry_change_request' messages"
+            msg_request = self._prepare_request(msg_request)
             try:
                 self._apply_request(msg_request)
             except:
                 logger.exception(f"At node {self.own_id} Could not apply change request {msg_content['request']}")
             else:
+                # if the request was successfully applied to the central node, propagate it to every other node.
                 for node_id in self.all_servers:
                     if node_id != self.own_id:
                         self.messenger.send(node_id, {
@@ -135,32 +138,54 @@ class Node:
                     else:
                         pass
         elif msg_type == 'propagate':
+            assert self.own_id != 0
             msg_request = msg_content['request']
-            # Let's hope this is from the coordinator
-            # Each node assigns its own ID... what could go wrong?
             entry = self._apply_request(msg_request)
-#            self.status['num_entries'] += 1
-#            entry = Entry(self.status['num_entries'], entry_value)
-#            self.board.add_entry(entry)
-#            print(f"Node {self.own_id}: Added entry ID {self.status['num_entries']} with value '{entry_value}'")
 
     def _apply_request(self, request):
+        """
+        Apply a request to the board.
+
+        This function guarantees that if it throws an exception, the board it does not change. The board.
+        """
         logger.debug(request)
         subtype = request['subtype']
-        if subtype == 'add_entry':
-            self.status['num_entries'] += 1
-            entry = Entry(self.status['num_entries'], request['entry_value'])
+        if subtype == 'set_entry':
+            entry = Entry(request['entry_id'], request['entry_value'])
             self.board.add_entry(entry)
-            logger.info(f"Node {self.own_id}: Added entry ID {self.status['num_entries']} with value '{request['entry_value']}'")
-        elif subtype == 'update_entry':
-            entry_id = int(request['entry_id'])
-            entry_value = request['entry_value']
-            entry = self.board.get_entry(entry_id)
-            entry.value = entry_value
+            logger.info(f"Node {self.own_id}: Set entry ID {entry.id} with value '{request['entry_value']}'")
         elif subtype == 'delete_entry':
-            entry_id = int(request['entry_id'])
+            entry_id = request['entry_id']
             self.board.delete_entry(entry_id)
                 
+    def _prepare_request(self, request):
+        """
+        Only to be executed on the central node, this method prepares the request for aplication to the board.
+
+        It does not change the board.
+
+        In particular it injects an id into requests to newly add entries.
+        """
+        logger.debug(f"preparing request: {request}")
+        subtype = request['subtype']
+        if subtype == 'delete_entry':
+            return request
+        elif subtype == 'add_entry':
+            self.status['max_id'] += 1
+            return {
+                'subtype':'set_entry',
+                'entry_id': str(self.status['max_id']),
+                'entry_value': request['entry_value']
+                }
+        elif subtype == 'update_entry':
+            return {
+                'subtype':'set_entry',
+                'entry_id': request['entry_id'],
+                'entry_value': request['entry_value']
+                }
+        else:
+             logger.error(f"Node {self.own_id} recieved unknown raw request: {request}")
+             
     def update(self, t: float):
         """
         Called periodically by the server to process incoming messages.
