@@ -1,8 +1,10 @@
 # coding=utf-8
 import random
 import messenger
+import logging_config
+import logging
 
-
+logger = logging.getLogger(__name__)
 
 class Entry:
     def __init__(self, id, value):
@@ -16,7 +18,7 @@ class Entry:
         }
 
     def from_dict(data: dict):
-        return Entry(data['id'], data['value'])
+        return Entry(int(data['id']), data['value'])
 
     def __str__(self):
         return str(self.to_dict())
@@ -28,6 +30,13 @@ class Board():
     def add_entry(self, entry):
         self.indexed_entries[entry.id] = entry
 
+    def get_entry(self, entry_id:float):
+        return self.indexed_entries[entry_id]
+
+    def delete_entry(self, entry_id:float):
+        logger.debug(f"delete_entry:{entry_id}")
+        del self.indexed_entries[entry_id]
+        
     def get_ordered_entries(self):
         ordered_indices = sorted(list(self.indexed_entries.keys()))
         return [self.indexed_entries[k] for k in ordered_indices]
@@ -60,17 +69,35 @@ class Node:
         Create a new entry by sending an 'add_entry' request to the coordinator (node 0).
         The coordinator will handle the rest.
         """
-        print(f"Node {self.own_id}: Sending 'add_entry' request to coordinator for value: {value}")
+        logger.info(f"Node {self.own_id}: Sending 'add_entry' request to coordinator for value: {value}")
         self.messenger.send(0, {
-            'type': 'add_entry',
-            'entry_value': value
+            'type':'entry_change_request',
+            'request':{
+                'subtype': 'add_entry',
+                'entry_value': value
+                }
         }, time)
 
     def update_entry(self, entry_id, value, time):
-        pass  # TODO (Optional Task 4): Implement update logic similar to create_entry
-
+        logger.info(f"Node {self.own_id}: Sending 'update_entry' request to coordinator for entry: {entry_id} and value: {value}")
+        self.messenger.send(0, {
+            'type':'entry_change_request',
+            'request':{
+                'subtype': 'update_entry',
+                'entry_id':entry_id,
+                'entry_value': value
+                }
+        }, time)
+    
     def delete_entry(self, entry_id, time):
-        pass  # TODO (Optional Task 4): Implement delete logic similar to create_entry
+        logger.info(f"Node {self.own_id}: Sending 'delete_entry' request to coordinator for entry: {entry_id}")
+        self.messenger.send(0, {
+            'type':'entry_change_request',
+            'request':{
+                'subtype': 'delete_entry',
+                'entry_id': entry_id
+                }
+        }, time)
 
     def handle_message(self, message, time):
         """
@@ -86,33 +113,54 @@ class Node:
         msg_content = message
 
         if 'type' not in msg_content:
-            print(f"Node {self.own_id}: Received message without type: {msg_content}")
+            logger.info(f"Node {self.own_id}: Received message without type: {msg_content}")
             return
 
         msg_type = msg_content['type']
-
-        if msg_type == 'add_entry':
+        msg_request = msg_content["request"]
+        if msg_type == 'entry_change_request':
             # Only coordinator should receive this
-            assert self.own_id == 0, "Only coordinator (node 0) should receive 'add_entry' messages"
-
-            entry_value = msg_content['entry_value']
-            print(f"Coordinator: Received add_entry for '{entry_value}', broadcasting to all nodes")
-
-            for node_id in self.all_servers:
-                self.messenger.send(node_id, {
-                    'type': 'propagate',
-                    'entry_value': entry_value
-                }, time)
-
+            assert self.own_id == 0, "Only coordinator (node 0) should receive 'entry_change_request' messages"
+            try:
+                self._apply_request(msg_request)
+            except:
+                logger.exception(f"At node {self.own_id} Could not apply change request {msg_content['request']}")
+            else:
+                for node_id in self.all_servers:
+                    if node_id != self.own_id:
+                        self.messenger.send(node_id, {
+                            'type': 'propagate',
+                            'request': msg_request
+                        }, time)
+                    else:
+                        pass
         elif msg_type == 'propagate':
-            entry_value = msg_content['entry_value']
+            msg_request = msg_content['request']
             # Let's hope this is from the coordinator
             # Each node assigns its own ID... what could go wrong?
-            self.status['num_entries'] += 1
-            entry = Entry(self.status['num_entries'], entry_value)
-            self.board.add_entry(entry)
-            print(f"Node {self.own_id}: Added entry ID {self.status['num_entries']} with value '{entry_value}'")
+            entry = self._apply_request(msg_request)
+#            self.status['num_entries'] += 1
+#            entry = Entry(self.status['num_entries'], entry_value)
+#            self.board.add_entry(entry)
+#            print(f"Node {self.own_id}: Added entry ID {self.status['num_entries']} with value '{entry_value}'")
 
+    def _apply_request(self, request):
+        logger.debug(request)
+        subtype = request['subtype']
+        if subtype == 'add_entry':
+            self.status['num_entries'] += 1
+            entry = Entry(self.status['num_entries'], request['entry_value'])
+            self.board.add_entry(entry)
+            logger.info(f"Node {self.own_id}: Added entry ID {self.status['num_entries']} with value '{request['entry_value']}'")
+        elif subtype == 'update_entry':
+            entry_id = int(request['entry_id'])
+            entry_value = request['entry_value']
+            entry = self.board.get_entry(entry_id)
+            entry.value = entry_value
+        elif subtype == 'delete_entry':
+            entry_id = int(request['entry_id'])
+            self.board.delete_entry(entry_id)
+                
     def update(self, t: float):
         """
         Called periodically by the server to process incoming messages.

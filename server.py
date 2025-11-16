@@ -13,7 +13,7 @@ import time
 import json
 import hashlib
 
-from messenger import Messenger, Transport, UnreliableTransport
+from messenger import ReliableMessenger, Transport, UnreliableTransport
 from node import Node
 import time
 
@@ -68,12 +68,12 @@ class Server(Bottle):
         self.get('/<filename:path>', callback=serve_static_file)
 
         self.r = random.Random(42)  # use a fixed seed for replayability
-        self._time = 0.0
+        self.time = [0.0]
         self.nodes = []
 
         # define nodes
         for node_id in range(NUM_NODES):
-            m = Messenger(node_id, NUM_NODES)
+            m = ReliableMessenger(node_id, NUM_NODES)
             n = Node(m, node_id, NUM_NODES, self.r)
             self.nodes.append(n)
 
@@ -115,7 +115,7 @@ class Server(Bottle):
 
             # update all alive nodes, note that we lock!
             with self.lock:
-                self._time = t
+                self.time[0] = t
                 for node in rand_nodes:
                     if not node.is_crashed():
                         try:
@@ -201,7 +201,7 @@ class Server(Bottle):
             entry_value = request.forms.get('value')
 
             with self.lock:
-                return self.nodes[node_id].create_entry(entry_value, self._time)
+                return self.nodes[node_id].create_entry(entry_value, self.time[0])
 
         except Exception as e:
             print("[ERROR] " + str(e))
@@ -216,7 +216,7 @@ class Server(Bottle):
             entry_value = request.forms.get('value')
 
             with self.lock:
-                return self.nodes[node_id].update_entry(entry_id, entry_value, self._time)
+                return self.nodes[node_id].update_entry(entry_id, entry_value, self.time[0])
         except Exception as e:
             print("[ERROR] " + str(e))
             raise e
@@ -230,7 +230,7 @@ class Server(Bottle):
             entry_value = request.forms.get('value')
 
             with self.lock:
-                return self.nodes[node_id].delete_entry(entry_id, self._time)
+                return self.nodes[node_id].delete_entry(entry_id, self.time[0])
 
         except Exception as e:
             print("[ERROR] " + str(e))
