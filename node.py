@@ -1,10 +1,8 @@
 # coding=utf-8
 import random
 import messenger
-import logging_config
-import logging
+import uuid
 
-logger = logging.getLogger(__name__)
 
 class Entry:
     def __init__(self, id, value):
@@ -18,7 +16,7 @@ class Entry:
         }
 
     def from_dict(data: dict):
-        return Entry(int(data['id']), data['value'])
+        return Entry(data['id'], data['value'])
 
     def __str__(self):
         return str(self.to_dict())
@@ -30,13 +28,6 @@ class Board():
     def add_entry(self, entry):
         self.indexed_entries[entry.id] = entry
 
-    def get_entry(self, entry_id:float):
-        return self.indexed_entries[entry_id]
-
-    def delete_entry(self, entry_id:float):
-        logger.debug(f"delete_entry:{entry_id}")
-        del self.indexed_entries[entry_id]
-        
     def get_ordered_entries(self):
         ordered_indices = sorted(list(self.indexed_entries.keys()))
         return [self.indexed_entries[k] for k in ordered_indices]
@@ -53,8 +44,7 @@ class Node:
         self.status = {
             "crashed": False,
             "notes": "",
-            "num_entries": 0,  
-            "max_id":0, # we use this to generate ids for the entries
+            "num_entries": 0,  # we use this to count entries created by this node
         }
         self.r = r
 
@@ -65,132 +55,59 @@ class Node:
         ordered_entries = self.board.get_ordered_entries()
         return list(map(lambda entry: entry.to_dict(), ordered_entries))
 
-    def create_entry(self, value, time):
+    def create_entry(self, value):
         """
-        Create a new entry by sending an 'add_entry' request to the coordinator (node 0).
-        The coordinator will handle the rest.
+        Create a new entry with a globally unique ID and propagate it to all other nodes.
+
+        In this lab, there is no coordinator. Each node can create entries independently,
+        and must propagate them to all other nodes using a gossip-style protocol.
         """
-        logger.info(f"Node {self.own_id}: Sending 'add_entry' request to coordinator for value: {value}")
-        self.messenger.send(0, {
-            'type':'entry_change_request',
-            'request':{
-                'subtype': 'add_entry',
-                'entry_value': value
-                }
-        }, time)
+        # TODO: Generate a globally unique ID
+        # For now, we use a simple counter (this won't work in a distributed setting!)
+        self.status['num_entries'] += 1
+        entry_id = self.status['num_entries']
 
-    def update_entry(self, entry_id, value, time):
-        logger.info(f"Node {self.own_id}: Sending 'update_entry' request to coordinator for entry: {entry_id} and value: {value}")
-        self.messenger.send(0, {
-            'type':'entry_change_request',
-            'request':{
-                'subtype': 'update_entry',
-                'entry_id':entry_id,
-                'entry_value': value
-                }
-        }, time)
-    
-    def delete_entry(self, entry_id, time):
-        logger.info(f"Node {self.own_id}: Sending 'delete_entry' request to coordinator for entry: {entry_id}")
-        self.messenger.send(0, {
-            'type':'entry_change_request',
-            'request':{
-                'subtype': 'delete_entry',
-                'entry_id': entry_id
-                }
-        }, time)
+        entry = Entry(entry_id, value)
+        self.board.add_entry(entry)
 
-    def handle_message(self, message, time):
+        print(f"Node {self.own_id}: Created entry {entry_id} with value '{value}'")
+
+        # TODO: Propagate the entry to all other servers? Use your solution for lab 1 to send messages between servers reliably
+        # - What if the request gets lost?
+        # - What if the request is delayed?
+        # - What if the response gets lost?
+        
+    def update_entry(self, entry_id, value):
+        print(f"Node {self.own_id}: tried to update {entry_id} to {value}, but update not implemented.")
+        # TODO (Optional): Implement modify operation with conflict resolution
+
+    def delete_entry(self, entry_id):
+        print(f"Node {self.own_id}: tried to delete {entry_id}, but delete not implemented.")
+        # TODO (Optional): Implement delete operation with conflict resolution
+
+    def handle_message(self, message):
         """
-        Handle incoming messages for the coordinator pattern.
-
-        We provide a basic implementation:
-        - If a node wants to add a new entry, it sends an 'add_entry' message to the coordinator
-        - The coordinator propagates it to all servers (including itself)
-        - If a node receives a 'propagate' message, it adds the entry to the board
-
-        Note: This implementation has some issues!
+        Handle incoming messages from other nodes.
+        # TODO: Implement message handling logic, use your solution for lab 1 to send messages between servers reliably
         """
-        msg_content = message
+        msg_content = message.get_content()
 
         if 'type' not in msg_content:
-            logger.info(f"Node {self.own_id}: Received message without type: {msg_content}")
+            print(f"Node {self.own_id}: Received message without type: {msg_content}")
             return
 
         msg_type = msg_content['type']
-        msg_request = msg_content["request"]
-        if msg_type == 'entry_change_request':
-            # Only coordinator should receive this
-            assert self.own_id == 0, "Only coordinator (node 0) should receive 'entry_change_request' messages"
-            msg_request = self._prepare_request(msg_request)
-            try:
-                self._apply_request(msg_request)
-            except:
-                logger.exception(f"At node {self.own_id} Could not apply change request {msg_content['request']}")
-            else:
-                # if the request was successfully applied to the central node, propagate it to every other node.
-                for node_id in self.all_servers:
-                    if node_id != self.own_id:
-                        self.messenger.send(node_id, {
-                            'type': 'propagate',
-                            'request': msg_request
-                        }, time)
-                    else:
-                        pass
-        elif msg_type == 'propagate':
-            assert self.own_id != 0
-            msg_request = msg_content['request']
-            entry = self._apply_request(msg_request)
 
-    def _apply_request(self, request):
-        """
-        Apply a request to the board.
+        if msg_type == 'propagate':
+            print(f"Node {self.own_id}: Received propagate message: {msg_content}")
+            pass
+        
 
-        This function guarantees that if it throws an exception, the board it does not change. The board.
-        """
-        logger.debug(request)
-        subtype = request['subtype']
-        if subtype == 'set_entry':
-            entry = Entry(request['entry_id'], request['entry_value'])
-            self.board.add_entry(entry)
-            logger.info(f"Node {self.own_id}: Set entry ID {entry.id} with value '{request['entry_value']}'")
-        elif subtype == 'delete_entry':
-            entry_id = request['entry_id']
-            self.board.delete_entry(entry_id)
-                
-    def _prepare_request(self, request):
-        """
-        Only to be executed on the central node, this method prepares the request for aplication to the board.
 
-        It does not change the board.
-
-        In particular it injects an id into requests to newly add entries.
-        """
-        logger.debug(f"preparing request: {request}")
-        subtype = request['subtype']
-        if subtype == 'delete_entry':
-            return request
-        elif subtype == 'add_entry':
-            self.status['max_id'] += 1
-            return {
-                'subtype':'set_entry',
-                'entry_id': str(self.status['max_id']),
-                'entry_value': request['entry_value']
-                }
-        elif subtype == 'update_entry':
-            return {
-                'subtype':'set_entry',
-                'entry_id': request['entry_id'],
-                'entry_value': request['entry_value']
-                }
-        else:
-             logger.error(f"Node {self.own_id} recieved unknown raw request: {request}")
-             
     def update(self, t: float):
         """
         Called periodically by the server to process incoming messages.
         """
-        msgs = self.messenger.receive(t)
-        for source,msg in msgs:
-            print(f"Node {self.own_id} received message at time {t}: {msg}")
-            self.handle_message(msg, t)
+        msgs = self.messenger.receive()
+        for msg in msgs:
+            self.handle_message(msg)

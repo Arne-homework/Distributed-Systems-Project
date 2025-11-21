@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test file for Lab 1: Centralized Consistency with Coordinator Pattern
+Test file for Lab 2: Weak Consistency
 
 Modify the parameters below to test different scenarios:
 - NUM_ENTRIES: Number of entries to create
@@ -10,15 +10,15 @@ Modify the parameters below to test different scenarios:
 
 import random
 import time
-from messenger import  Messenger, ReliableMessenger, Transport, UnreliableTransport
+from messenger import Message, Messenger, Transport, UnreliableTransport
 from node import Node
-import logging_config
+
 # ============================================================
 # TEST CONFIGURATION
 # ============================================================
 NUM_ENTRIES = 10
 NUM_SERVERS = 4
-SCENARIO = 'hard'  # Options: 'easy', 'medium', 'hard'
+SCENARIO = 'easy'  # Options: 'easy', 'medium', 'hard'
 
 # ============================================================
 
@@ -82,8 +82,8 @@ def run_simulation(nodes, transports, duration_seconds=5.0, time_step=0.01):
                 node.update(t)
 
         t += time_step
-        time.sleep(0.001)  # Small sleep to prevent CPU spinning
-
+        time.sleep(0.001)
+        
     return t
 
 
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     r = random.Random(42)
     nodes = []
     for i in range(NUM_SERVERS):
-        m = ReliableMessenger(i, NUM_SERVERS, timeout=3, window_size=100)
+        m = Messenger(i, NUM_SERVERS)
         n = Node(m, i, NUM_SERVERS, r)
         nodes.append(n)
 
@@ -109,7 +109,7 @@ if __name__ == "__main__":
 
     for i in range(NUM_ENTRIES):
         for server_id in range(NUM_SERVERS):
-            nodes[server_id].create_entry(f"Server{server_id}_Entry{i}",0.0)
+            nodes[server_id].create_entry(f"Server{server_id}_Entry{i}")
 
     # Run simulation long enough for all messages to be delivered
     # Adjust duration based on scenario (harder scenarios might need more time)
@@ -148,6 +148,37 @@ if __name__ == "__main__":
         print("\n" + "=" * 60)
         print("TEST FAILED - Inconsistency detected!")
         print("=" * 60)
-        print("\nTips:")
-        print("  - For 'easy' scenario: Check your coordinator pattern implementation")
-        print("  - For 'medium'/'hard': You may need to implement reliability mechanisms")
+
+
+
+"""
+Task 3a: Test network partition and recovery.
+
+TODO: Implement this test!
+
+Steps:
+1. Setup nodes and transports with partitioned scenario
+2. Create entries in each partition
+3. Run simulation (partitions should stay separate)
+4. Verify that nodes within each partition are consistent, but different across partitions
+5. Heal the partition
+6. Continue simulation
+7. Check that all nodes eventually have the same entries
+"""
+
+
+"""
+Task 3a: Test crash and recovery behavior.
+
+TODO: Implement this test!
+
+Steps:
+1. Setup nodes and transports
+2. Crash one node (set node.status["crashed"] = True)
+3. Create entries on non-crashed nodes
+4. Run simulation (crashed node should not receive updates)
+5. Recover the crashed node (set node.status["crashed"] = False)
+6. Continue simulation (node should catch up)
+7. Check that all nodes eventually have the same entries
+"""
+
