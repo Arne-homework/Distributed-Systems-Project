@@ -17,22 +17,31 @@ from messenger import Messenger, Transport, UnreliableTransport
 from node import Node
 import time
 
-NUM_NODES = int(os.getenv('NUM_NODES')) if os.getenv('NUM_NODES') else 2
-GROUP_NAME = os.getenv('GROUP_NAME')
+NUM_NODES = int(os.getenv("NUM_NODES")) if os.getenv("NUM_NODES") else 2
+GROUP_NAME = os.getenv("GROUP_NAME")
 # Port for the server to listen on
-SERVER_PORT = int(os.getenv('PORT')) if os.getenv('PORT') else 80
+SERVER_PORT = int(os.getenv("PORT")) if os.getenv("PORT") else 80
 # External port for frontend to connect to (used when running in Docker with port mapping)
 # In Docker: server listens on 80, but externally accessible on 8000
-# Locally: server listens on 8000, externally accessible on 8000
-EXTERNAL_PORT = int(os.getenv('EXTERNAL_PORT')) if os.getenv('EXTERNAL_PORT') else SERVER_PORT
+# Locally: server listens on 8000, externally accxessible on 8000
+EXTERNAL_PORT = (
+    int(os.getenv("EXTERNAL_PORT")) if os.getenv("EXTERNAL_PORT") else SERVER_PORT
+)
+
 
 def index(server=0):
-    with open('frontend/index.html') as f:
+    with open("frontend/index.html") as f:
         s = f.read()
-        s = s.replace("%SERVER_LIST%", ",".join([f"127.0.0.1:{EXTERNAL_PORT}/nodes/{i}" for i in range(NUM_NODES)]))  # replace list of servers
+        s = s.replace(
+            "%SERVER_LIST%",
+            ",".join(
+                [f"127.0.0.1:{EXTERNAL_PORT}/nodes/{i}" for i in range(NUM_NODES)]
+            ),
+        )  # replace list of servers
         s = s.replace("%SERVER_ID%", str(server))  # replace selected server
         s = s.replace("%GROUP_NAME%", GROUP_NAME)  # replace group name
         return s
+
 
 def serve_static_file(filename):
     response = static_file(filename, root="./frontend/")
@@ -49,23 +58,29 @@ class Server(Bottle):
         self.lock = threading.RLock()  # use reentry lock for the server
 
         # Handle CORS
-        self.route('/<:re:.*>', method='OPTIONS', callback=self.add_cors_headers)
-        self.add_hook('after_request', self.add_cors_headers)
+        self.route("/<:re:.*>", method="OPTIONS", callback=self.add_cors_headers)
+        self.add_hook("after_request", self.add_cors_headers)
 
         # Those two http calls simulate crashes, i.e., unavailability of the server
-        self.post('/nodes/<node_id:int>/crash', callback=self.crash_request)
-        self.post('/nodes/<node_id:int>/recover', callback=self.recover_request)
-        self.get('/nodes/<node_id:int>/status', callback=self.status_request)
+        self.post("/nodes/<node_id:int>/crash", callback=self.crash_request)
+        self.post("/nodes/<node_id:int>/recover", callback=self.recover_request)
+        self.get("/nodes/<node_id:int>/status", callback=self.status_request)
 
         # Define REST URIs for the frontend (note that we define multiple update and delete routes right now)
-        self.post('/nodes/<node_id:int>/entries', callback=self.create_entry_request)
-        self.get('/nodes/<node_id:int>/entries', callback=self.list_entries_request)
-        self.post('/nodes/<node_id:int>/entries/<entry_id>', callback=self.update_entry_request)
-        self.post('/nodes/<node_id:int>/entries/<entry_id>/delete', callback=self.delete_entry_request)
+        self.post("/nodes/<node_id:int>/entries", callback=self.create_entry_request)
+        self.get("/nodes/<node_id:int>/entries", callback=self.list_entries_request)
+        self.post(
+            "/nodes/<node_id:int>/entries/<entry_id>",
+            callback=self.update_entry_request,
+        )
+        self.post(
+            "/nodes/<node_id:int>/entries/<entry_id>/delete",
+            callback=self.delete_entry_request,
+        )
 
-        self.get('/', callback=index)
-        self.get('/server/<server>', callback=index)
-        self.get('/<filename:path>', callback=serve_static_file)
+        self.get("/", callback=index)
+        self.get("/server/<server>", callback=index)
+        self.get("/<filename:path>", callback=serve_static_file)
 
         self.r = random.Random(42)  # use a fixed seed for replayability
 
@@ -87,14 +102,18 @@ class Server(Bottle):
                 # transport = Transport(self.nodes[from_id].messenger.out_queues[to_id], self.nodes[to_id].messenger.in_queue, self.r)
 
                 # Replace with UnreliableTransport and configure delays/drops
-                transport = UnreliableTransport(self.nodes[from_id].messenger.out_queues[to_id], self.nodes[to_id].messenger.in_queue, self.r)
+                transport = UnreliableTransport(
+                    self.nodes[from_id].messenger.out_queues[to_id],
+                    self.nodes[to_id].messenger.in_queue,
+                    self.r,
+                )
                 transport.set_delay(0.5, 2.0)  # 0.5-2.0 second delay
-                transport.set_drop_rate(0.1)   # 10% packet loss
+                transport.set_drop_rate(0.1)  # 10% packet loss
 
                 self.transports[(from_id, to_id)] = transport
 
         # start a thread which updates all nodes in a loop
-        self.node_update_time_delta = 0.01 # seconds
+        self.node_update_time_delta = 0.01  # seconds
         self.node_worker_thread = threading.Thread(target=self.update_nodes)
         self.node_worker_thread.daemon = True
         self.node_worker_thread.start()
@@ -102,7 +121,7 @@ class Server(Bottle):
     def update_nodes(self):
 
         t = 0.0
-        rand_nodes = self.nodes.copy() # we copy it here because we reorder it
+        rand_nodes = self.nodes.copy()  # we copy it here because we reorder it
         while True:
 
             # iterate through all transports and deliver messages
@@ -124,9 +143,10 @@ class Server(Bottle):
                             print(traceback.format_exc())
                             pass
 
-            time.sleep(self.node_update_time_delta)  # sleep a bit, note that this is not very precise i.e., the actual time delta might be larger
+            time.sleep(
+                self.node_update_time_delta
+            )  # sleep a bit, note that this is not very precise i.e., the actual time delta might be larger
             t += self.node_update_time_delta
-
 
     # Please try to avoid modifying the following methods
     # ------------------------------------------------------------------------------------------------------
@@ -135,9 +155,13 @@ class Server(Bottle):
         You need to add some headers to each request.
         Don't use the wildcard '*' for Access-Control-Allow-Origin in production.
         """
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'PUT, GET, POST, DELETE, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Origin, Accept, Content-Type, X-Requested-With, X-CSRF-Token'
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = (
+            "PUT, GET, POST, DELETE, OPTIONS"
+        )
+        response.headers["Access-Control-Allow-Headers"] = (
+            "Origin, Accept, Content-Type, X-Requested-With, X-CSRF-Token"
+        )
 
     def list_entries_request(self, node_id: int):
         # DONT use me for server to server stuff as this is also available when crashed. Please implement another method for that (which also handles the crashed state!)
@@ -150,10 +174,12 @@ class Server(Bottle):
                     "entries": dict_entries,
                     "server_status": {
                         "len": len(dict_entries),
-                        "hash": hashlib.sha256((json.dumps(tuple(dict_entries)).encode('utf-8'))).hexdigest(),
+                        "hash": hashlib.sha256(
+                            (json.dumps(tuple(dict_entries)).encode("utf-8"))
+                        ).hexdigest(),
                         "crashed": self.nodes[node_id].status["crashed"],
-                        "notes": self.nodes[node_id].status["notes"]
-                    }  # we piggyback here allowing for a simple frontend implementation
+                        "notes": self.nodes[node_id].status["notes"],
+                    },  # we piggyback here allowing for a simple frontend implementation
                 }
         except Exception as e:
             print("[ERROR] " + str(e))
@@ -167,9 +193,11 @@ class Server(Bottle):
                 dict_entries = self.nodes[node_id].get_entries()
                 return {
                     "len": len(dict_entries),
-                    "hash": hashlib.sha256((json.dumps(tuple(dict_entries)).encode('utf-8'))).hexdigest(),
+                    "hash": hashlib.sha256(
+                        (json.dumps(tuple(dict_entries)).encode("utf-8"))
+                    ).hexdigest(),
                     "crashed": self.nodes[node_id].status["crashed"],
-                    "notes": self.nodes[node_id].status["notes"]
+                    "notes": self.nodes[node_id].status["notes"],
                 }
         except Exception as e:
             print("[ERROR] " + str(e))
@@ -197,7 +225,7 @@ class Server(Bottle):
                 response.status = 408
                 return
 
-            entry_value = request.forms.get('value')
+            entry_value = request.forms.get("value")
 
             with self.lock:
                 return self.nodes[node_id].create_entry(entry_value)
@@ -212,7 +240,7 @@ class Server(Bottle):
                 response.status = 408
                 return
 
-            entry_value = request.forms.get('value')
+            entry_value = request.forms.get("value")
 
             with self.lock:
                 return self.nodes[node_id].update_entry(entry_id, entry_value)
@@ -226,7 +254,7 @@ class Server(Bottle):
                 response.status = 408
                 return
 
-            entry_value = request.forms.get('value')
+            entry_value = request.forms.get("value")
 
             with self.lock:
                 return self.nodes[node_id].delete_entry(entry_id)
@@ -242,5 +270,13 @@ time.sleep(2)
 server = Server()
 
 NUM_THREADS = 2
-print("#### Starting labs server with {} nodes on port {}".format(NUM_NODES, SERVER_PORT))
-httpserver.serve(server, host='0.0.0.0', port=SERVER_PORT, threadpool_workers=NUM_THREADS,                  threadpool_options={"spawn_if_under": NUM_THREADS})
+print(
+    "#### Starting labs server with {} nodes on port {}".format(NUM_NODES, SERVER_PORT)
+)
+httpserver.serve(
+    server,
+    host="0.0.0.0",
+    port=SERVER_PORT,
+    threadpool_workers=NUM_THREADS,
+    threadpool_options={"spawn_if_under": NUM_THREADS},
+)

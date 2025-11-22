@@ -10,7 +10,9 @@ Modify the parameters below to test different scenarios:
 
 import random
 import time
-from messenger import Message, Messenger, Transport, UnreliableTransport
+from transport import Transport, UnreliableTransport
+from messenger import Messenger, ReliableMessenger
+from clock import clock_server
 from node import Node
 
 # ============================================================
@@ -18,9 +20,10 @@ from node import Node
 # ============================================================
 NUM_ENTRIES = 10
 NUM_SERVERS = 4
-SCENARIO = 'easy'  # Options: 'easy', 'medium', 'hard'
+SCENARIO = "easy"  # Options: 'easy', 'medium', 'hard'
 
 # ============================================================
+
 
 def create_transports(nodes, scenario, r):
     """
@@ -36,27 +39,27 @@ def create_transports(nodes, scenario, r):
 
     for from_id in range(num_nodes):
         for to_id in range(num_nodes):
-            if scenario == 'easy':
+            if scenario == "easy":
                 # Reliable transport
                 transport = Transport(
                     nodes[from_id].messenger.out_queues[to_id],
                     nodes[to_id].messenger.in_queue,
-                    r
+                    r,
                 )
             else:
                 # Unreliable transport
                 transport = UnreliableTransport(
                     nodes[from_id].messenger.out_queues[to_id],
                     nodes[to_id].messenger.in_queue,
-                    r
+                    r,
                 )
 
-                if scenario == 'medium':
+                if scenario == "medium":
                     transport.set_delay(0.5, 1.5)  # Delays only
-                    transport.set_drop_rate(0.0)   # No packet loss
-                elif scenario == 'hard':
+                    transport.set_drop_rate(0.0)  # No packet loss
+                elif scenario == "hard":
                     transport.set_delay(0.5, 1.5)  # Delays
-                    transport.set_drop_rate(0.1)   # 10% packet loss
+                    transport.set_drop_rate(0.1)  # 10% packet loss
 
             transports[(from_id, to_id)] = transport
 
@@ -76,14 +79,16 @@ def run_simulation(nodes, transports, duration_seconds=5.0, time_step=0.01):
         for transport in transports.values():
             transport.deliver(t)
 
-        # Update all non-crashed nodes
+        # Update all non-crashed nodesx
+        for _, clock in clock_server.all_clocks():
+            clock.set_time(t)
         for node in nodes:
             if not node.is_crashed():
                 node.update(t)
 
         t += time_step
         time.sleep(0.001)
-        
+
     return t
 
 
@@ -96,7 +101,8 @@ if __name__ == "__main__":
     r = random.Random(42)
     nodes = []
     for i in range(NUM_SERVERS):
-        m = Messenger(i, NUM_SERVERS)
+        #        m = Messenger(i, NUM_SERVERS)
+        m = ReliableMessenger(i, NUM_SERVERS)
         n = Node(m, i, NUM_SERVERS, r)
         nodes.append(n)
 
@@ -150,7 +156,6 @@ if __name__ == "__main__":
         print("=" * 60)
 
 
-
 """
 Task 3a: Test network partition and recovery.
 
@@ -181,4 +186,3 @@ Steps:
 6. Continue simulation (node should catch up)
 7. Check that all nodes eventually have the same entries
 """
-

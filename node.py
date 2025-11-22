@@ -2,6 +2,10 @@
 import random
 import messenger
 import uuid
+import logging
+from clock import clock_server
+
+logger = logging.getLogger(__name__)
 
 
 class Entry:
@@ -10,18 +14,16 @@ class Entry:
         self.value = value
 
     def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "value": self.value
-        }
+        return {"id": self.id, "value": self.value}
 
     def from_dict(data: dict):
-        return Entry(data['id'], data['value'])
+        return Entry(data["id"], data["value"])
 
     def __str__(self):
         return str(self.to_dict())
 
-class Board():
+
+class Board:
     def __init__(self):
         self.indexed_entries = {}
 
@@ -34,7 +36,10 @@ class Board():
 
 
 class Node:
-    def __init__(self, m: messenger.Messenger, own_id: int, num_servers: int, r : random.Random):
+    def __init__(
+        self, m: messenger.Messenger, own_id: int, num_servers: int, r: random.Random
+    ):
+        self._clock = clock_server.get_clock_for_node(own_id)
         self.messenger = m
         self.own_id = own_id
         self.num_servers = num_servers
@@ -64,25 +69,31 @@ class Node:
         """
         # TODO: Generate a globally unique ID
         # For now, we use a simple counter (this won't work in a distributed setting!)
-        self.status['num_entries'] += 1
-        entry_id = self.status['num_entries']
+        self.status["num_entries"] += 1
+        entry_id = self.status["num_entries"]
 
         entry = Entry(entry_id, value)
         self.board.add_entry(entry)
 
-        print(f"Node {self.own_id}: Created entry {entry_id} with value '{value}'")
+        logger.info(
+            f"Node {self.own_id}: Created entry {entry_id} with value '{value}'"
+        )
 
         # TODO: Propagate the entry to all other servers? Use your solution for lab 1 to send messages between servers reliably
         # - What if the request gets lost?
         # - What if the request is delayed?
         # - What if the response gets lost?
-        
+
     def update_entry(self, entry_id, value):
-        print(f"Node {self.own_id}: tried to update {entry_id} to {value}, but update not implemented.")
+        logger.info(
+            f"Node {self.own_id}: tried to update {entry_id} to {value}, but update not implemented."
+        )
         # TODO (Optional): Implement modify operation with conflict resolution
 
     def delete_entry(self, entry_id):
-        print(f"Node {self.own_id}: tried to delete {entry_id}, but delete not implemented.")
+        logger.info(
+            f"Node {self.own_id}: tried to delete {entry_id}, but delete not implemented."
+        )
         # TODO (Optional): Implement delete operation with conflict resolution
 
     def handle_message(self, message):
@@ -92,22 +103,24 @@ class Node:
         """
         msg_content = message.get_content()
 
-        if 'type' not in msg_content:
-            print(f"Node {self.own_id}: Received message without type: {msg_content}")
+        if "type" not in msg_content:
+            logger.info(
+                f"Node {self.own_id}: Received message without type: {msg_content}"
+            )
             return
 
-        msg_type = msg_content['type']
+        msg_type = msg_content["type"]
 
-        if msg_type == 'propagate':
-            print(f"Node {self.own_id}: Received propagate message: {msg_content}")
+        if msg_type == "propagate":
+            logger.info(
+                f"Node {self.own_id}: Received propagate message: {msg_content}"
+            )
             pass
-        
-
 
     def update(self, t: float):
         """
         Called periodically by the server to process incoming messages.
         """
-        msgs = self.messenger.receive()
+        msgs = self.messenger.receive(t)
         for msg in msgs:
             self.handle_message(msg)
