@@ -1,10 +1,22 @@
 import uuid
-import secrets
 
 
-def generate_id_v1(node_id: int, time: float):
-    return uuid.uuid4()
+class RandomGenerator:
+    """Generator to generate random ids."""
+
+    def generate(self):
+        return uuid.uuid4().hex
 
 
-def generate_id_v2(node_id: int, time: float, nbytes=4):
-    return secrets.token_hex(nbytes) + f"{int(time*100):0>13}" + f"{node_id:0>3}"
+class NodeAwareGenerator:
+    """Generates a unique id given a unique node_id."""
+
+    def __init__(self, node_id, max_node_id):
+        self._i = 0
+        self._max_node_id = max_node_id
+        self._node_id = node_id
+
+    def generate(self):
+        new_id = self._i * (self._max_node_id+1)+self._node_id
+        self._i += 1
+        return f"{new_id:032X}"
