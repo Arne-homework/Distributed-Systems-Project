@@ -102,7 +102,7 @@ if __name__ == "__main__":
     nodes = []
     for i in range(NUM_SERVERS):
         #        m = Messenger(i, NUM_SERVERS)
-        m = ReliableMessenger(i, NUM_SERVERS)
+        m = ReliableMessenger(i, NUM_SERVERS, timeout=3.0, window_size=10)
         n = Node(m, i, NUM_SERVERS, r)
         nodes.append(n)
 
