@@ -17,6 +17,6 @@ class NodeAwareGenerator:
         self._node_id = node_id
 
     def generate(self):
-        new_id = self._i * (self._max_node_id+1)+self._node_id
+        new_id = self._i * (self._max_node_id+1) + self._node_id
         self._i += 1
         return f"{new_id:032X}"

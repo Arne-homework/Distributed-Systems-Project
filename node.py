@@ -13,6 +13,8 @@ class Entry:
     def __init__(self, id, value, last_event_id):
         self.id = id
         self.value = value
+        # id of the last event that set this entries value.
+        #  allows us to often avoid having to create the full history.
         self.last_event_id = last_event_id
 
     def to_dict(self) -> dict:
@@ -48,12 +50,12 @@ class Node:
         self.num_servers = num_servers
         self.all_servers = range(num_servers)
         self.other_servers = [i for i in self.all_servers if i != own_id]
-        logger.info(f"Node {self.own_id} {self.other_servers}")
         self.board = Board()
         self.status = {
             "crashed": False,
             "notes": "",
         }
+        # currently we use an in memory database
         self._event_store = EventStore("sqlite+pysqlite:///:memory:", False)
         self._event_store.initialize_database()
         self._event_id_generator = RandomGenerator()
@@ -85,13 +87,16 @@ class Node:
             "create",
             value,
             [])
-        self._apply_event(event)
-
-        logger.info(
-            f"Node {self.own_id}: Created entry {event.entry_id}"
-            f" with value '{value}'"
-        )
-        self._send_event(event)
+        try:
+            self._apply_event(event)
+        except err:
+            logger.exeption()
+        else:
+            logger.info(
+                f"Node {self.own_id}: Created entry {event.entry_id}"
+                f" with value '{value}'"
+            )
+            self._send_event(event)
 
     def update_entry(self, entry_id, value):
         timestamp = self._get_timestamp()
@@ -103,12 +108,16 @@ class Node:
             "update",
             value,
             [depended_event_id])
-        self._apply_event(event)
-        logger.info(
-            f"Node {self.own_id}: Updated entry {event.entry_id}"
-            f" with value '{value}'"
+        try:
+            self._apply_event(event)
+        except err:
+            logger.exeption()
+        else:
+            logger.info(
+                f"Node {self.own_id}: Updated entry {event.entry_id}"
+                f" with value '{value}'"
             )
-        self._send_event(event)
+            self._send_event(event)
 
     def delete_entry(self, entry_id):
         timestamp = self._get_timestamp()
@@ -120,28 +129,40 @@ class Node:
             "delete",
             "",
             [depended_event_id])
-        self._apply_event(event)
-        logger.info(
-            f"Node {self.own_id}: Deleted {event.entry_id}"
+        try:
+            self._apply_event(event)
+        except err:
+            logger.exeption()
+        else:
+            logger.info(
+                f"Node {self.own_id}: Deleted {event.entry_id}"
             )
-        self._send_event(event)
+            self._send_event(event)
 
     def _get_timestamp(self):
         return 0  # TODO: replace by useful timestamp
 
     def _apply_event(self, event: Event):
-        indexed_entries = self.board.indexed_entries
+        """
+        Apply a new event to the board.
+        """
+        self._event_store.add_event(event)
+        indexed_entries = self.board.indexed_entries  # shorten this.
         if event.action == "create":
             assert event.entry_id not in indexed_entries
-            self._event_store.add_event(event)
             indexed_entries[event.entry_id] = Entry(
                 event.entry_id,
                 event.value,
                 event.event_id)
             return
         elif event.action == "update":
-            self._event_store.add_event(event)
+            # update (and delete) entries can occur if
+            #  node 1 creates an entry and node 2 updates it
+            #  and node 2 sends its event to us before node 1 sends its own.
             if (event.entry_id in indexed_entries
+                # if the event builds on the last event
+                #  that set this entries value,
+                #  we can avoid using the whole history
                 and indexed_entries[event.entry_id].last_event_id
                     in event.depended_event_ids):
                 indexed_entries[event.entry_id] = Entry(
@@ -150,8 +171,6 @@ class Node:
                     event.event_id)
                 return
         elif event.action == "delete":
-            assert event.entry_id in self.board.indexed_entries
-            self._event_store.add_event(event)
             if (event.entry_id in indexed_entries
                 and indexed_entries[event.entry_id].last_event_id
                     in event.depended_event_ids):
@@ -163,10 +182,29 @@ class Node:
         self._regenerate_entry(self.event.entry_id)
 
     def _regenerate_entry(self, entry_id):
+        """
+        Generate an entry from the stored events.
+        """
         if entry_id in self.board.indexed_entries:
             del self.board.indexed_entries[entry_id]
         history = self._event_store.get_history(entry_id)
-        event = history.root_event
+        if len(history.root_events) == 0:
+            raise Exception("History without root event")
+        elif len(history.root_events) == 1:
+            event = history.root_events[0]
+        else:
+            # History has multiple events without predecessors.
+            # if one of them is a creation event use this as root.
+            #  the others are assumed to be
+            #   update/delete events with a missing intermediate
+            # if the creation event is missing, ignore the entry for now.
+            event = None
+            for candidate in history.root_events:
+                if candidate.action == "create":
+                    event = candidate
+                    break
+            if event is None:
+                return
         assert event.action == "create"
         entry = Entry(entry_id, event.value, event.event_id)
         while (event.event_id in history.inverted_dependencies):
@@ -174,6 +212,12 @@ class Node:
                           for successor_id
                           in history.inverted_dependencies[event.event_id]]
             assert len(successors) > 0
+            # we sort by timestamp & event_id
+            # if the time difference between events is larger than
+            # the clock deviation between the nodes clocks was,
+            # this allows us to prefer earlier events,
+            # otherways it is by chance but deterministic.
+            # if timestamps are equal, event_id works as a tiebreaker
             successors.sort(key=lambda e: (e.timestamp, e.event_id))
             event = successors[0]
             if event.action == "update":
@@ -181,12 +225,11 @@ class Node:
             elif event.action == "delete":
                 return
             else:
-                raise Exception("unknown action")
+                raise Exception("unknown action f{event.action}")
         self.board.indexed_entries[entry_id] = entry
 
     def _send_event(self, event):
         """send an event to all other nodes"""
-
         for i in self.other_servers:
             self.messenger.send(i, event.to_dict(), self._clock.get_time())
 
@@ -196,7 +239,10 @@ class Node:
         """
         logger.info(f"recieved message:{message}")
         event = Event.from_dict(message[1])
-        self._apply_event(event)
+        try:
+            self._apply_event(event)
+        except err:
+            logger.exeption()
 
     def update(self, t: float):
         """

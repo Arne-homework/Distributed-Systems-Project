@@ -1,3 +1,7 @@
+# coding=utf-8
+"""
+Implementing Eventsourcing
+"""
 from sqlalchemy import String
 from sqlalchemy import text
 from sqlalchemy import create_engine
@@ -18,18 +22,24 @@ CREATE TABLE depended_events(
   event_id VARCHAR NOT NULL,
   depended_event_id VARCHAR NOT NULL,
   FOREIGN KEY(event_id) REFERENCES events(event_id),
-  FOREIGN KEy(depended_event_id) REFERENCES events(event_id)
 )"""
 
 
 class Event:
     def __init__(self, event_id, entry_id, timestamp,
                  action, value, depended_event_ids):
+        # The unique id of this event
         self._event_id = event_id
+        # Id of the entry this event modifies.
         self._entry_id = entry_id
+        # timestamp of the creation of this event.
+        # This based upon the local time of the creating node.
         self._timestamp = int(timestamp)
+        # Action that created this event.
         self._action = action
+        # Usually the new value of the entry; "" for Deletion events.
         self._value = value
+        # ids of events on which this event depends.
         self._depended_event_ids = depended_event_ids
 
     @property
@@ -62,8 +72,8 @@ class Event:
                 and (self._timestamp == other._timestamp)
                 and (self._action == other._action)
                 and (self._value == other._value)
-                and (self._depended_event_ids == other._depended_event_ids) )
-    
+                and (self._depended_event_ids == other._depended_event_ids))
+
     def to_dict(self):
         return {"event_id": self._event_id,
                 "entry_id": self._entry_id,
@@ -73,7 +83,7 @@ class Event:
                 "depended_event_ids": self._depended_event_ids}
 
     @staticmethod
-    def from_dict( dict_):
+    def from_dict(dict_):
         dd = dict_  # just make it shorter to write
         return Event(
             dd["event_id"],
@@ -85,12 +95,21 @@ class Event:
 
 
 class History:
+    """
+    Represents the history of an entry.
+
+    The history is in general a DAG of events.
+    """
+
     def __init__(self, events: dict[str, Event],
                  inverted_dependencies: dict[str, list[str]],
-                 root_event: Event):
+                 root_events: list[Event]):
+        # A mapping from the event ids to the event.
         self.events = events
+        # mapping the id of an event to its successors.
         self.inverted_dependencies = inverted_dependencies
-        self.root_event = root_event
+        # the events that have no predecessor in the history.
+        self.root_events = root_events
 
 
 class EventStore:
@@ -98,12 +117,20 @@ class EventStore:
         self._engine = self._create_engine(name, echo)
 
     def _create_engine(self, name, echo=True):
+        """
+        creates the database engine
+
+        if the echo parameter is left true,
+          the engine will print all queries and commands send to the database.
+        """
         return create_engine(name, echo=echo)
 
     def initialize_database(self):
         """
         Creates the tables of the database, and performs other setup work.
 
+        Not needed if the database connects to
+          an already existing database file.
         """
         with self._engine.begin() as conn:
             conn.execute(
@@ -114,6 +141,11 @@ class EventStore:
             )
 
     def add_event(self, event: Event):
+        """
+        Add an event to the store.
+
+        May throw if any constraints are violated.
+        """
         with self._engine.begin() as conn:
             conn.execute(
                 text("INSERT INTO events"
@@ -136,6 +168,9 @@ class EventStore:
                 )
 
     def get_history(self, entry_id: String):
+        """
+        return the full history of an entry identified by the entries id.
+        """
         with self._engine.begin() as conn:
             events_list = list(conn.execute(
                 text(
@@ -177,6 +212,5 @@ class EventStore:
                 events[event_id] = Event(event_id, entry_id, timestamp, action,
                                          value, dependend_events)
         diff = set(events.keys())-set(dependencies.keys())
-        assert len(diff) == 1
-        root_event = events[diff.pop()]
-        return History(events, inverted_dependencies, root_event)
+        root_events = [events[id] for id in diff]
+        return History(events, inverted_dependencies, root_events)
