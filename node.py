@@ -126,8 +126,10 @@ class Node:
             )
         self._send_event(event)
 
+    # Return timestamp
     def _get_timestamp(self):
-        return 0  # TODO: replace by useful timestamp
+        # The timestamp has a granularity of 1 millisecond.
+        return int(self._clock.get_time()*1000)
 
     def _apply_event(self, event: Event):
         indexed_entries = self.board.indexed_entries
@@ -198,11 +200,11 @@ class Node:
         event = Event.from_dict(message[1])
         self._apply_event(event)
 
-    def update(self, t: float):
+    def update(self):
         """
         Called periodically by the server to process incoming messages.
         """
-        self._clock.set_time(t)
-        msgs = self.messenger.receive(t)
+        time = self._clock.get_time()
+        msgs = self.messenger.receive(time)
         for msg in msgs:
             self.handle_message(msg)

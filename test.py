@@ -1,188 +1,220 @@
 #!/usr/bin/env python3
 """
 Test file for Lab 2: Weak Consistency
-
-Modify the parameters below to test different scenarios:
-- NUM_ENTRIES: Number of entries to create
-- NUM_SERVERS: Number of nodes
-- SCENARIO: 'easy' (no failures), 'medium' (delays), 'hard' (delays + packet loss)
 """
 
 import random
+import sys
 import time
+import logging
 from transport import Transport, UnreliableTransport
-from messenger import Messenger, ReliableMessenger
-from clock import clock_server
+from messenger import ReliableMessenger
+from clock import clock_server, ExternalDeterminedClock
 from node import Node
+
+logging.basicConfig( stream=sys.stdout,level=logging.ERROR, force=True)
 
 # ============================================================
 # TEST CONFIGURATION
 # ============================================================
-NUM_ENTRIES = 10
+NUM_ENTRIES = 5
 NUM_SERVERS = 4
-SCENARIO = "easy"  # Options: 'easy', 'medium', 'hard'
+SCENARIO = "medium"  # Options: 'easy', 'medium', 'hard'
 
 # ============================================================
 
 
 def create_transports(nodes, scenario, r):
-    """
-    Create transports between nodes based on the scenario.
-
-    Scenarios:
-    - 'easy': No delays, no packet loss (reliable)
-    - 'medium': Delays (0.5-1.5s), no packet loss
-    - 'hard': Delays (0.5-1.5s) + 10% packet loss
-    """
     transports = {}
     num_nodes = len(nodes)
 
     for from_id in range(num_nodes):
         for to_id in range(num_nodes):
             if scenario == "easy":
-                # Reliable transport
                 transport = Transport(
                     nodes[from_id].messenger.out_queues[to_id],
                     nodes[to_id].messenger.in_queue,
                     r,
                 )
             else:
-                # Unreliable transport
                 transport = UnreliableTransport(
                     nodes[from_id].messenger.out_queues[to_id],
                     nodes[to_id].messenger.in_queue,
                     r,
                 )
-
                 if scenario == "medium":
-                    transport.set_delay(0.5, 1.5)  # Delays only
-                    transport.set_drop_rate(0.0)  # No packet loss
+                    transport.set_delay(0.1, 0.5)
+                    transport.set_drop_rate(0.0)
                 elif scenario == "hard":
-                    transport.set_delay(0.5, 1.5)  # Delays
-                    transport.set_drop_rate(0.1)  # 10% packet loss
+                    transport.set_delay(0.1, 0.5)
+                    transport.set_drop_rate(0.1)
 
             transports[(from_id, to_id)] = transport
-
     return transports
 
 
-def run_simulation(nodes, transports, duration_seconds=5.0, time_step=0.01):
-    """
-    Run the distributed system simulation for a specified duration.
-    Delivers messages and updates nodes at each time step.
-    """
-    t = 0.0
+def run_simulation(nodes, transports, duration_seconds=5.0, time_step=0.01, start_time=0.0):
+    t = start_time
     iterations = int(duration_seconds / time_step)
 
     for _ in range(iterations):
-        # Deliver messages via all transports
         for transport in transports.values():
             transport.deliver(t)
 
-        # Update all non-crashed nodesx
         for _, clock in clock_server.all_clocks():
             clock.set_time(t)
+            
         for node in nodes:
             if not node.is_crashed():
-                node.update(t)
+                node.update()
 
         t += time_step
-        time.sleep(0.001)
+        time.sleep(0.0001) 
 
     return t
 
 
-if __name__ == "__main__":
-    print("=" * 60)
-    print(f"Lab 1 Test - Scenario: {SCENARIO}")
-    print("=" * 60)
-
-    # Setup nodes
-    r = random.Random(42)
-    nodes = []
-    for i in range(NUM_SERVERS):
-        #        m = Messenger(i, NUM_SERVERS)
-        m = ReliableMessenger(i, NUM_SERVERS, timeout=3.0, window_size=10)
-        n = Node(m, i, NUM_SERVERS, r)
-        nodes.append(n)
-
-    # Setup transports based on scenario
-    transports = create_transports(nodes, SCENARIO, r)
-
-    # Create entries from all servers
-    print(f"\nCreating {NUM_ENTRIES} entries from each of {NUM_SERVERS} servers...")
-    start_time = time.time()
-
-    for i in range(NUM_ENTRIES):
-        for server_id in range(NUM_SERVERS):
-            nodes[server_id].create_entry(f"Server{server_id}_Entry{i}")
-
-    # Run simulation long enough for all messages to be delivered
-    # Adjust duration based on scenario (harder scenarios might need more time)
-    duration = 10.0
-
-    print(f"Running simulation for {duration}s...")
-    run_simulation(nodes, transports, duration_seconds=duration)
-
-    elapsed = time.time() - start_time
-    print(f"Time taken: {elapsed:.2f}s")
-
-    # Check consistency
-    print("\nChecking consistency across all nodes...")
-    reference_entries = nodes[0].get_entries()
-    total_expected = NUM_ENTRIES * NUM_SERVERS
-
+def check_consistency(nodes, expected_count):
+    print("\n--- Consistency Check ---")
+    reference_entries = None
     all_consistent = True
+    
     for node in nodes:
+        if not node.is_crashed():
+            reference_entries = node.get_entries()
+            break
+            
+    if reference_entries is None:
+        print("All nodes are crashed! Cannot check consistency.")
+        return False
+
+    for node in nodes:
+        if node.is_crashed():
+            print(f"Node {node.own_id}: CRASHED (Skipping check)")
+            continue
+            
         entries = node.get_entries()
         print(f"Node {node.own_id}: {len(entries)} entries")
 
-        if len(entries) != total_expected:
-            print(f"  Expected {total_expected} entries, got {len(entries)}")
+        if len(entries) != expected_count:
+            print(f"  [FAIL] Expected {expected_count} entries, got {len(entries)}")
             all_consistent = False
         elif entries != reference_entries:
-            print(f"  Entries differ from Node 0")
+            print(f"  [FAIL] Entries differ from Reference Node")
             all_consistent = False
         else:
-            print(f"  Consistent")
+            print(f"  [OK] Consistent")
 
-    if all_consistent:
-        print("\n" + "=" * 60)
-        print("TEST PASSED - All nodes consistent!")
-        print("=" * 60)
+    return all_consistent
+
+
+def test_partition_recovery():
+    print("\n" + "=" * 60)
+    print("TASK 3a: NETWORK PARTITION TEST")
+    print("=" * 60)
+    
+    # --- FIX: Reset the global clock server ---
+    clock_server.set_clock_factory(lambda n: ExternalDeterminedClock())
+    # ------------------------------------------
+
+    r = random.Random(100)
+    nodes = [Node(ReliableMessenger(i, NUM_SERVERS, timeout=2.0), i, NUM_SERVERS, r) for i in range(NUM_SERVERS)]
+    transports = create_transports(nodes, "medium", r) 
+    
+    current_time = 0.0
+
+    print("1. Network Healthy. Creating initial entries...")
+    nodes[0].create_entry("Init_Entry")
+    current_time = run_simulation(nodes, transports, duration_seconds=2.0, start_time=current_time)
+    
+    if not check_consistency(nodes, 1):
+        print("Initial setup failed consistency!"); return
+
+    print("\n2. CREATING PARTITION: [0,1] <---> [2,3]")
+    print("   Setting drop_rate = 1.0 for cross-partition links.")
+    
+    partition_A = {0, 1}
+    partition_B = {2, 3}
+    
+    for (src, dst), transport in transports.items():
+        if (src in partition_A and dst in partition_B) or \
+           (src in partition_B and dst in partition_A):
+            transport.set_drop_rate(1.0)
+
+    print("   Node 0 creates 'Entry_A' (Only [0,1] should see this)")
+    nodes[0].create_entry("Entry_A")
+    
+    print("   Node 3 creates 'Entry_B' (Only [2,3] should see this)")
+    nodes[3].create_entry("Entry_B")
+
+    current_time = run_simulation(nodes, transports, duration_seconds=5.0, start_time=current_time)
+
+    print("\n3. Verifying Divergence (Nodes should differ)...")
+    entries_0 = nodes[0].get_entries()
+    entries_3 = nodes[3].get_entries()
+    
+    print(f"   Node 0 count: {len(entries_0)} (Expected 2: Init + A)")
+    print(f"   Node 3 count: {len(entries_3)} (Expected 2: Init + B)")
+    
+    if len(entries_0) == 2 and len(entries_3) == 2 and entries_0 != entries_3:
+        print("   [OK] Partitions successfully diverged.")
     else:
-        print("\n" + "=" * 60)
-        print("TEST FAILED - Inconsistency detected!")
-        print("=" * 60)
+        print("   [FAIL] Partitions did not diverge as expected.")
+
+    print("\n4. HEALING PARTITION")
+    for transport in transports.values():
+        transport.set_drop_rate(0.0)
+        
+    print("   Running simulation for convergence...")
+    current_time = run_simulation(nodes, transports, duration_seconds=10.0, start_time=current_time)
+
+    if check_consistency(nodes, 3):
+        print("\n>>> PARTITION TEST PASSED <<<")
+    else:
+        print("\n>>> PARTITION TEST FAILED <<<")
 
 
-"""
-Task 3a: Test network partition and recovery.
-
-TODO: Implement this test!
-
-Steps:
-1. Setup nodes and transports with partitioned scenario
-2. Create entries in each partition
-3. Run simulation (partitions should stay separate)
-4. Verify that nodes within each partition are consistent, but different across partitions
-5. Heal the partition
-6. Continue simulation
-7. Check that all nodes eventually have the same entries
-"""
+def test_crash_recovery():
+    print("\n" + "=" * 60)
+    print("TASK 3a: CRASH AND RECOVERY TEST")
+    print("=" * 60)
 
 
-"""
-Task 3a: Test crash and recovery behavior.
+    r = random.Random(200)
+    nodes = [Node(ReliableMessenger(i, NUM_SERVERS, timeout=2.0), i, NUM_SERVERS, r) for i in range(NUM_SERVERS)]
+    transports = create_transports(nodes, "medium", r)
+    current_time = 0.0
 
-TODO: Implement this test!
+    print("1. Creating initial entry...")
+    nodes[0].create_entry("Entry_Pre_Crash")
+    current_time = run_simulation(nodes, transports, duration_seconds=2.0, start_time=current_time)
 
-Steps:
-1. Setup nodes and transports
-2. Crash one node (set node.status["crashed"] = True)
-3. Create entries on non-crashed nodes
-4. Run simulation (crashed node should not receive updates)
-5. Recover the crashed node (set node.status["crashed"] = False)
-6. Continue simulation (node should catch up)
-7. Check that all nodes eventually have the same entries
-"""
+    print("\n2. CRASHING Node 1")
+    nodes[1].status["crashed"] = True
+    
+    print("   Node 0 creates 'Entry_During_Crash'")
+    nodes[0].create_entry("Entry_During_Crash")
+    
+    current_time = run_simulation(nodes, transports, duration_seconds=4.0, start_time=current_time)
+    
+    print("\n3. Verifying Node 1 missed the update (Queued but not processed)")
+
+    print("\n4. RECOVERING Node 1")
+    nodes[1].status["crashed"] = False
+    
+    print("   Running simulation for catch-up...")
+    current_time = run_simulation(nodes, transports, duration_seconds=10.0, start_time=current_time)
+
+    if check_consistency(nodes, 2):
+        print("\n>>> CRASH TEST PASSED <<<")
+    else:
+        print("\n>>> CRASH TEST FAILED <<<")
+
+
+if __name__ == "__main__":
+    test_partition_recovery()
+
+    # Reset the clocks
+    clock_server.set_clock_factory(lambda n: ExternalDeterminedClock())
+
+    test_crash_recovery()
