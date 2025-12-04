@@ -21,7 +21,7 @@ CREATE TABLE depended_events(
   row_id INTEGER NOT NULL PRIMARY KEY,
   event_id VARCHAR NOT NULL,
   depended_event_id VARCHAR NOT NULL,
-  FOREIGN KEY(event_id) REFERENCES events(event_id),
+  FOREIGN KEY(event_id) REFERENCES events(event_id)
 )"""
 
 

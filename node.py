@@ -152,11 +152,7 @@ class Node:
         indexed_entries = self.board.indexed_entries  # shorten this.
         if event.action == "create":
             assert event.entry_id not in indexed_entries
-            indexed_entries[event.entry_id] = Entry(
-                event.entry_id,
-                event.value,
-                event.event_id)
-            return
+            # there could already be other events for this entry be recorded. We need to "regenerate the entry"
         elif event.action == "update":
             # update (and delete) entries can occur if
             #  node 1 creates an entry and node 2 updates it
@@ -181,7 +177,7 @@ class Node:
         else:
             logger.error(f"Node {self.own_id} recieved event of unkonwn type:"
                          f"{event.to_dict()}")
-        self._regenerate_entry(self.event.entry_id)
+        self._regenerate_entry(event.entry_id)
 
     def _regenerate_entry(self, entry_id):
         """
@@ -191,22 +187,12 @@ class Node:
             del self.board.indexed_entries[entry_id]
         history = self._event_store.get_history(entry_id)
         if len(history.root_events) == 0:
-            raise Exception("History without root event")
+            # the creation event hasn't been propagated to this node yet.
+            return
         elif len(history.root_events) == 1:
             event = history.root_events[0]
         else:
-            # History has multiple events without predecessors.
-            # if one of them is a creation event use this as root.
-            #  the others are assumed to be
-            #   update/delete events with a missing intermediate
-            # if the creation event is missing, ignore the entry for now.
-            event = None
-            for candidate in history.root_events:
-                if candidate.action == "create":
-                    event = candidate
-                    break
-            if event is None:
-                return
+            raise Exception("cannot (yet) handle a history with multiple root elements")
         assert event.action == "create"
         entry = Entry(entry_id, event.value, event.event_id)
         while (event.event_id in history.inverted_dependencies):
@@ -243,8 +229,8 @@ class Node:
         event = Event.from_dict(message[1])
         try:
             self._apply_event(event)
-        except err:
-            logger.exeption()
+        except:
+            logger.exception()
 
     def update(self):
         """
