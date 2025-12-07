@@ -6,14 +6,14 @@ import traceback
 from bottle import Bottle, request, HTTPError, run, response, static_file
 
 from paste import httpserver
-
+from clock import clock_server
 import threading
 import os
 import time
 import json
 import hashlib
 
-from messenger import Messenger, Transport, UnreliableTransport
+from messenger import ReliableMessenger, Transport, UnreliableTransport
 from node import Node
 import time
 
@@ -87,10 +87,13 @@ class Server(Bottle):
         self.nodes = []
 
         # define nodes
+        print("START CREATING NODES")
         for node_id in range(NUM_NODES):
-            m = Messenger(node_id, NUM_NODES)
+            m = ReliableMessenger(node_id, NUM_NODES)
+            print(f"new node {node_id}")
             n = Node(m, node_id, NUM_NODES, self.r)
             self.nodes.append(n)
+        print("END CREATING NODES")
 
         # define transport from one server to all others
         # Start with reliable transport for basic implementation
@@ -134,10 +137,12 @@ class Server(Bottle):
 
             # update all alive nodes, note that we lock!
             with self.lock:
+                for _, clock in clock_server.all_clocks():
+                    clock.set_time(t)
                 for node in rand_nodes:
                     if not node.is_crashed():
                         try:
-                            node.update(t)
+                            node.update()
                         except Exception as e:
                             print("[ERROR] " + str(e))
                             print(traceback.format_exc())
@@ -220,6 +225,7 @@ class Server(Bottle):
             raise e
 
     def create_entry_request(self, node_id):
+        print("create new entry on node {node_id}")
         try:
             if self.nodes[node_id].status["crashed"]:
                 response.status = 408

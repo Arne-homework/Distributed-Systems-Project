@@ -5,16 +5,19 @@ Implementing Eventsourcing
 from sqlalchemy import String
 from sqlalchemy import text
 from sqlalchemy import create_engine
+import json
 
 
 create_events_table_string = """
 CREATE TABLE events(
    event_id VARCHAR NOT NULL PRIMARY KEY,
    entry_id VARCHAR NOT NULL,
-   timestamp INTEGER NOT NULL,
+   creation_timestamp INTEGER NOT NULL,
+   vector_timestamp VARCHAR NOT NULL,
+   lamport_timestamp INTEGER NOT NULL,
    action VARCHAR NOT NULL,
    value VARCHAR NOT NULL
-)"""
+);"""
 
 create_depended_events_table_string = """
 CREATE TABLE depended_events(
@@ -22,11 +25,12 @@ CREATE TABLE depended_events(
   event_id VARCHAR NOT NULL,
   depended_event_id VARCHAR NOT NULL,
   FOREIGN KEY(event_id) REFERENCES events(event_id)
-)"""
+);"""
 
 
 class Event:
-    def __init__(self, event_id, entry_id, timestamp,
+    def __init__(self, event_id, entry_id, creation_timestamp,
+                 vector_timestamp, lamport_timestamp,
                  action, value, depended_event_ids):
         # The unique id of this event
         self._event_id = event_id
@@ -34,7 +38,11 @@ class Event:
         self._entry_id = entry_id
         # timestamp of the creation of this event.
         # This based upon the local time of the creating node.
-        self._timestamp = int(timestamp)
+        self._creation_timestamp = int(creation_timestamp)
+        # Vector timestamp to track causality between events.
+        self._vector_timestamp = [int(entry) for entry in vector_timestamp]
+        # 
+        self._lamport_timestamp = int(lamport_timestamp)
         # Action that created this event.
         self._action = action
         # Usually the new value of the entry; "" for Deletion events.
@@ -51,8 +59,16 @@ class Event:
         return self._entry_id
 
     @property
-    def timestamp(self):
-        return self._timestamp
+    def creation_timestamp(self):
+        return self._creation_timestamp
+
+    @property
+    def vector_timestamp(self):
+        return self._vector_timestamp
+
+    @property
+    def lamport_timestamp(self):
+        return self._lamport_timestamp
 
     @property
     def action(self):
@@ -69,7 +85,9 @@ class Event:
     def __eq__(self, other):
         return ((self._event_id == other._event_id)
                 and (self._entry_id == other._entry_id)
-                and (self._timestamp == other._timestamp)
+                and (self._creation_timestamp == other._creation_timestamp)
+                and (self._vector_timestamp == other._vector_timestamp)
+                and (self._lamport_timestamp == other._lamport_timestamp)
                 and (self._action == other._action)
                 and (self._value == other._value)
                 and (self._depended_event_ids == other._depended_event_ids))
@@ -77,7 +95,9 @@ class Event:
     def to_dict(self):
         return {"event_id": self._event_id,
                 "entry_id": self._entry_id,
-                "timestamp": self._timestamp,
+                "creation_timestamp": self._creation_timestamp,
+                "vector_timestamp": self._vector_timestamp,
+                "lamport_timestamp": self._lamport_timestamp,
                 "action": self._action,
                 "value": self._value,
                 "depended_event_ids": self._depended_event_ids}
@@ -88,7 +108,9 @@ class Event:
         return Event(
             dd["event_id"],
             dd["entry_id"],
-            dd["timestamp"],
+            dd["creation_timestamp"],
+            dd["vector_timestamp"],
+            dd["lamport_timestamp"],
             dd["action"],
             dd["value"],
             dd["depended_event_ids"])
@@ -139,6 +161,7 @@ class EventStore:
             conn.execute(
                 text(create_depended_events_table_string)
             )
+            
 
     def add_event(self, event: Event):
         """
@@ -149,11 +172,15 @@ class EventStore:
         with self._engine.begin() as conn:
             conn.execute(
                 text("INSERT INTO events"
-                     "(event_id, entry_id, timestamp, action, value)"
-                     "VALUES(:event_id,:entry_id,:timestamp,:action,:value)"),
+                     " (event_id, entry_id, creation_timestamp, vector_timestamp,"
+                     " lamport_timestamp, action, value)"
+                     "VALUES(:event_id,:entry_id,:creation_timestamp, :vector_timestamp,"
+                     " :lamport_timestamp, :action,:value)"),
                 {"event_id": event.event_id,
                  "entry_id": event.entry_id,
-                 "timestamp": event.timestamp,
+                 "creation_timestamp": event.creation_timestamp,
+                 "vector_timestamp"  : json.dumps(event.vector_timestamp),
+                 "lamport_timestamp" : event.lamport_timestamp,
                  "action": event.action,
                  "value": event.value})
             if len(event.depended_event_ids) > 0:
@@ -174,7 +201,8 @@ class EventStore:
         with self._engine.begin() as conn:
             events_list = list(conn.execute(
                 text(
-                    "SELECT event_id, entry_id, timestamp, action, value"
+                    "SELECT event_id, entry_id, creation_timestamp,"
+                    " vector_timestamp, lamport_timestamp, action, value"
                     " FROM events WHERE entry_id LIKE :entry_id"
                 ),
                 {"entry_id": entry_id}
@@ -205,11 +233,14 @@ class EventStore:
                 dependencies[entry[0]].append(entry[1])
                 inverted_dependencies[entry[1]].append(entry[0])
             for event_tuple in events_list:
-                event_id, entry_id, timestamp, action, value = event_tuple
+                event_id, entry_id, creation_timestamp, \
+                    vector_timestamp, lamport_timestamp, action, value = event_tuple
+                vector_timestamp = json.loads(vector_timestamp)
                 dependend_events = (dependencies[event_id]
                                     if (event_id in dependencies)
                                     else [])
-                events[event_id] = Event(event_id, entry_id, timestamp, action,
+                events[event_id] = Event(event_id, entry_id, creation_timestamp,
+                                         vector_timestamp, lamport_timestamp, action,
                                          value, dependend_events)
         diff = set(events.keys())-set(dependencies.keys())
         root_events = [events[id] for id in diff]

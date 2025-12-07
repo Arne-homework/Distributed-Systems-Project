@@ -56,7 +56,7 @@ class Node:
             "notes": "",
         }
         # currently we use an in memory database
-        self._event_store = EventStore("sqlite+pysqlite:///:memory:", False)
+        self._event_store = EventStore("sqlite:///:memory:", False)
         self._event_store.initialize_database()
         self._event_id_generator = RandomGenerator()
         self._entry_id_generator = RandomGenerator()
@@ -84,13 +84,15 @@ class Node:
             self._event_id_generator.generate(),
             self._entry_id_generator.generate(),
             timestamp,
+            [0,0],
+            0,
             "create",
             value,
             [])
         try:
             self._apply_event(event)
-        except err:
-            logger.exeption()
+        except :
+            logger.exception("Could not create event")
         else:
             logger.info(
                 f"Node {self.own_id}: Created entry {event.entry_id}"
@@ -99,19 +101,21 @@ class Node:
             self._send_event(event)
 
     def update_entry(self, entry_id, value):
-        timestamp = self._get_timestamp()
+        creation_timestamp = self._get_timestamp()
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id
         event = Event(
             self._event_id_generator.generate(),
             entry_id,
-            timestamp,
+            creation_timestamp,
+            [0, 0],
+            0,
             "update",
             value,
             [depended_event_id])
         try:
             self._apply_event(event)
-        except err:
-            logger.exeption()
+        except:
+            logger.exception("Could not update entry.")
         else:
             logger.info(
                 f"Node {self.own_id}: Updated entry {event.entry_id}"
@@ -120,19 +124,21 @@ class Node:
             self._send_event(event)
 
     def delete_entry(self, entry_id):
-        timestamp = self._get_timestamp()
+        creation_timestamp = self._get_timestamp()
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id
         event = Event(
             self._event_id_generator.generate(),
             entry_id,
-            timestamp,
+            creation_timestamp,
+            [0,0],
+            0,
             "delete",
             "",
             [depended_event_id])
         try:
             self._apply_event(event)
-        except err:
-            logger.exeption()
+        except :
+            logger.exception("Could not delete entry.")
         else:
             logger.info(
                 f"Node {self.own_id}: Deleted {event.entry_id}"
@@ -206,7 +212,7 @@ class Node:
             # this allows us to prefer earlier events,
             # otherways it is by chance but deterministic.
             # if timestamps are equal, event_id works as a tiebreaker
-            successors.sort(key=lambda e: (e.timestamp, e.event_id))
+            successors.sort(key=lambda e: (e.creation_timestamp, e.event_id))
             event = successors[0]
             if event.action == "update":
                 entry = Entry(entry_id, event.value, event.event_id)
@@ -230,7 +236,7 @@ class Node:
         try:
             self._apply_event(event)
         except:
-            logger.exception()
+            logger.exception("Could not handle the message")
 
     def update(self):
         """
