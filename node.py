@@ -5,6 +5,7 @@ import logging
 from clock import clock_server
 from event import Event, EventStore
 from id_generator import RandomGenerator
+from vector_clock import VectorTimestamp
 import logging_config
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ class Node:
             self._event_id_generator.generate(),
             self._entry_id_generator.generate(),
             timestamp,
-            [0,0],
+            VectorTimestamp([0, 0]),
             0,
             "create",
             value,
@@ -107,7 +108,7 @@ class Node:
             self._event_id_generator.generate(),
             entry_id,
             creation_timestamp,
-            [0, 0],
+            VectorTimestamp([0, 0]),
             0,
             "update",
             value,
@@ -130,7 +131,7 @@ class Node:
             self._event_id_generator.generate(),
             entry_id,
             creation_timestamp,
-            [0,0],
+            VectorTimestamp([0, 0]),
             0,
             "delete",
             "",

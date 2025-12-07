@@ -5,6 +5,7 @@ Implementing Eventsourcing
 from sqlalchemy import String
 from sqlalchemy import text
 from sqlalchemy import create_engine
+from vector_clock import VectorTimestamp
 import json
 
 
@@ -40,8 +41,8 @@ class Event:
         # This based upon the local time of the creating node.
         self._creation_timestamp = int(creation_timestamp)
         # Vector timestamp to track causality between events.
-        self._vector_timestamp = [int(entry) for entry in vector_timestamp]
-        # 
+        self._vector_timestamp = vector_timestamp
+        # the Lamport timestamp
         self._lamport_timestamp = int(lamport_timestamp)
         # Action that created this event.
         self._action = action
@@ -96,7 +97,7 @@ class Event:
         return {"event_id": self._event_id,
                 "entry_id": self._entry_id,
                 "creation_timestamp": self._creation_timestamp,
-                "vector_timestamp": self._vector_timestamp,
+                "vector_timestamp": self._vector_timestamp.to_list(),
                 "lamport_timestamp": self._lamport_timestamp,
                 "action": self._action,
                 "value": self._value,
@@ -109,7 +110,7 @@ class Event:
             dd["event_id"],
             dd["entry_id"],
             dd["creation_timestamp"],
-            dd["vector_timestamp"],
+            VectorTimestamp.from_list(dd["vector_timestamp"]),
             dd["lamport_timestamp"],
             dd["action"],
             dd["value"],
@@ -161,7 +162,6 @@ class EventStore:
             conn.execute(
                 text(create_depended_events_table_string)
             )
-            
 
     def add_event(self, event: Event):
         """
@@ -179,8 +179,9 @@ class EventStore:
                 {"event_id": event.event_id,
                  "entry_id": event.entry_id,
                  "creation_timestamp": event.creation_timestamp,
-                 "vector_timestamp"  : json.dumps(event.vector_timestamp),
-                 "lamport_timestamp" : event.lamport_timestamp,
+                 "vector_timestamp": json.dumps(
+                     event.vector_timestamp.to_list()),
+                 "lamport_timestamp": event.lamport_timestamp,
                  "action": event.action,
                  "value": event.value})
             if len(event.depended_event_ids) > 0:
@@ -233,14 +234,15 @@ class EventStore:
                 dependencies[entry[0]].append(entry[1])
                 inverted_dependencies[entry[1]].append(entry[0])
             for event_tuple in events_list:
-                event_id, entry_id, creation_timestamp, \
-                    vector_timestamp, lamport_timestamp, action, value = event_tuple
-                vector_timestamp = json.loads(vector_timestamp)
+                event_id, entry_id, creation_timestamp, vector_timestamp, \
+                     lamport_timestamp, action, value = event_tuple
+                vector_timestamp = VectorTimestamp(json.loads(vector_timestamp))
                 dependend_events = (dependencies[event_id]
                                     if (event_id in dependencies)
                                     else [])
-                events[event_id] = Event(event_id, entry_id, creation_timestamp,
-                                         vector_timestamp, lamport_timestamp, action,
+                events[event_id] = Event(event_id, entry_id,
+                                         creation_timestamp, vector_timestamp,
+                                         lamport_timestamp, action,
                                          value, dependend_events)
         diff = set(events.keys())-set(dependencies.keys())
         root_events = [events[id] for id in diff]

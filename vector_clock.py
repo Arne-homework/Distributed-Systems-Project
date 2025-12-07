@@ -1,51 +1,79 @@
 from typing import Self
 
-class VectorClock():
-    def __init__(self, n=1, entries=None):
-        # TODO: Init vector clock with num and integer entries, you might want to create a copy of the entries
-        pass
 
-    # TODO: Increment the respective clock index when an event occurs on server i
-    def increment(self, i):
-        pass
+class VectorTimestamp:
+    def __init__(self, vector):
+        self._vector = [int(i) for i in vector]
 
-    # TODO: Update our own entries based on the other clock
-    def update(self, other: Self):
-        pass
+    @property
+    def vector(self):
+        """returns a copy of the current counters as a list"""
+        return self._vector[:]
 
-    # Todo: Implement me
-    def from_list(entries : list) -> Self:
-        return VectorClock()
+    @classmethod
+    def from_list(cls, entries: list[int]) -> Self:
+        """Initializes the timestamp from a list"""
+        return cls(entries)
 
-    # Todo: Implement me
     def to_list(self) -> list:
-        return []
+        """converts the Timestamp to a list"""
+        return self.vector
 
-    # Todo: Implement me
-    def is_parallel(self, other):
-        pass
+    def __eq__(self, other) -> bool:
+        return self._vector == other._vector
 
-    # Todo: Implement me, check if our clock is strictly smaller than the other one!
-    def __lt__(self, other):
-        return False
+    def __repr__(self):
+        return f"VectorTimestamp({self._vector})"
 
-    # a simple copy function for now
-    def copy(self : Self) -> Self:
-        return VectorClock.from_list(self.to_list())
+    def is_concurrent(self, other):
+        """
+        Checks if two timestamps are concurrent(without causal ordering).
+
+        equal timestamps are currently treated as concurrent.
+        """
+        return (not self < other) and (not other < self)
+
+    def __lt__(self, other: Self):
+        assert len(other._vector) == len(self._vector)
+        res = False
+        for i in range(len(self._vector)):
+            if self._vector[i] < other._vector[i]:
+                res = True
+            elif self._vector[i] > other._vector[i]:
+                return False
+        return res
 
 
-if __name__ == "__main__":
-    # you can use test.py or you can test your code here, just execute it using python3 vector_clock.py then
-    # please extend it to match all the requirements of vector clocks ;)
+class VectorClock():
+    def __init__(self, node_id, start_timestamp):
+        self._node_id = node_id
+        self._current_timestamp = start_timestamp
 
-    c0 = VectorClock(n=1, entries=[0])
+    @classmethod
+    def create_new(cls, node_id, number_of_nodes):
+        """Create a new VectorClock for the node with the node_id and a specified number of nodes"""
+        return cls(node_id, VectorTimestamp([0 for i in range(number_of_nodes)]))
 
-    c1 = c0.copy()
-    c1.increment(0)
+    def increment(self):
+        """Increment the counter for the associated node."""
+        vector = self._current_timestamp.vector
+        vector[self._node_id] += 1
+        self._current_timestamp = VectorTimestamp(vector)
 
-    c2 = c1.copy()
-    c2.update(c0)
+    def update(self, other: VectorTimestamp):
+        """
+        Updates the counters with counters from another timestamp
+        (Always chooses the larger counter for each node)
+        AND increments the own counter.
+        """
+        assert len(other.vector) == len(self._current_timestamp.vector)
+        vector = []
+        for i in range(len(other.vector)):
+            vector.append(max(self._current_timestamp.vector[i],
+                              other.vector[i]))
+        self._current_timestamp = VectorTimestamp(vector)
+        self.increment()
 
-    assert c0 < c1
-    assert c0 < c2
-    assert not (c1 < c2)
+    @property
+    def current_timestamp(self):
+        return self._current_timestamp
