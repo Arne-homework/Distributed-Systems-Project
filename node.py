@@ -5,17 +5,18 @@ import logging
 from clock import clock_server
 from event import Event, EventStore
 from id_generator import RandomGenerator
-from vector_clock import VectorTimestamp
-import logging_config
+from vector_clock import VectorClock
+from functools import cmp_to_key
+
 logger = logging.getLogger(__name__)
 
 
 class Entry:
-    def __init__(self, id, value, last_event_id):
+    def __init__(self, id, value, vector_timestamp, last_event_id):
         self.id = id
         self.value = value
-        # id of the last event that set this entries value.
-        #  allows us to often avoid having to create the full history.
+        self.vector_timestamp = vector_timestamp
+        # The id of the last even defining this entries value.
         self.last_event_id = last_event_id
 
     def to_dict(self) -> dict:
@@ -24,7 +25,7 @@ class Entry:
     def __str__(self):
         return str(self.to_dict())
 
-
+#<
 class Board:
     def __init__(self):
         self.indexed_entries = {}
@@ -33,8 +34,17 @@ class Board:
         self.indexed_entries[entry.id] = entry
 
     def get_ordered_entries(self):
-        ordered_indices = sorted(list(self.indexed_entries.keys()))
-        return [self.indexed_entries[k] for k in ordered_indices]
+        def cmp(entry0, entry1):
+            if entry0.vector_timestamp.is_concurrent(
+                    entry1.vector_timestamp):
+                return 0
+            else:
+                return -1 if (entry0.vector_timestamp <
+                              entry1.vector_timestamp) else 1
+        l1 = sorted(
+            list(self.indexed_entries.values()),
+            key=lambda e: e.id)
+        return sorted(l1, key=cmp_to_key(cmp))
 
     def get_number_of_entries(self):
         return len(self.indexed_entries)
@@ -46,6 +56,7 @@ class Node:
             own_id: int, num_servers: int, r: random.Random
     ):
         self._clock = clock_server.get_clock_for_node(own_id)
+        self._vector_clock = VectorClock.create_new(own_id, num_servers)
         self.messenger = m
         self.own_id = own_id
         self.num_servers = num_servers
@@ -66,6 +77,9 @@ class Node:
     def is_crashed(self):
         return self.status["crashed"]
 
+    def get_current_vector_timestamp(self):
+        return self._vector_clock.current_timestamp
+
     def get_entries(self):
         ordered_entries = self.board.get_ordered_entries()
         return list(map(lambda entry: entry.to_dict(), ordered_entries))
@@ -81,11 +95,12 @@ class Node:
           using a gossip-style protocol.
         """
         timestamp = self._get_timestamp()
+        self._vector_clock.increment()
         event = Event(
             self._event_id_generator.generate(),
             self._entry_id_generator.generate(),
             timestamp,
-            VectorTimestamp([0, 0]),
+            self._vector_clock.current_timestamp,
             0,
             "create",
             value,
@@ -104,11 +119,12 @@ class Node:
     def update_entry(self, entry_id, value):
         creation_timestamp = self._get_timestamp()
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id
+        self._vector_clock.increment()
         event = Event(
             self._event_id_generator.generate(),
             entry_id,
             creation_timestamp,
-            VectorTimestamp([0, 0]),
+            self._vector_clock.current_timestamp,
             0,
             "update",
             value,
@@ -127,11 +143,12 @@ class Node:
     def delete_entry(self, entry_id):
         creation_timestamp = self._get_timestamp()
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id
+        self._vector_clock.increment()
         event = Event(
             self._event_id_generator.generate(),
             entry_id,
             creation_timestamp,
-            VectorTimestamp([0, 0]),
+            self._vector_clock.current_timestamp,
             0,
             "delete",
             "",
@@ -156,34 +173,6 @@ class Node:
         Apply a new event to the board.
         """
         self._event_store.add_event(event)
-        indexed_entries = self.board.indexed_entries  # shorten this.
-        if event.action == "create":
-            assert event.entry_id not in indexed_entries
-            # there could already be other events for this entry be recorded. We need to "regenerate the entry"
-        elif event.action == "update":
-            # update (and delete) entries can occur if
-            #  node 1 creates an entry and node 2 updates it
-            #  and node 2 sends its event to us before node 1 sends its own.
-            if (event.entry_id in indexed_entries
-                # if the event builds on the last event
-                #  that set this entries value,
-                #  we can avoid using the whole history
-                and indexed_entries[event.entry_id].last_event_id
-                    in event.depended_event_ids):
-                indexed_entries[event.entry_id] = Entry(
-                    event.entry_id,
-                    event.value,
-                    event.event_id)
-                return
-        elif event.action == "delete":
-            if (event.entry_id in indexed_entries
-                and indexed_entries[event.entry_id].last_event_id
-                    in event.depended_event_ids):
-                del self.board.indexed_entries[event.entry_id]
-                return
-        else:
-            logger.error(f"Node {self.own_id} recieved event of unkonwn type:"
-                         f"{event.to_dict()}")
         self._regenerate_entry(event.entry_id)
 
     def _regenerate_entry(self, entry_id):
@@ -199,9 +188,13 @@ class Node:
         elif len(history.root_events) == 1:
             event = history.root_events[0]
         else:
-            raise Exception("cannot (yet) handle a history with multiple root elements")
+            raise Exception(
+                "cannot (yet) handle a history with multiple root elements")
         assert event.action == "create"
-        entry = Entry(entry_id, event.value, event.event_id)
+        entry = Entry(entry_id,
+                      event.value,
+                      event.vector_timestamp,
+                      event.event_id)
         while (event.event_id in history.inverted_dependencies):
             successors = [history.events[successor_id]
                           for successor_id
@@ -213,10 +206,14 @@ class Node:
             # this allows us to prefer earlier events,
             # otherways it is by chance but deterministic.
             # if timestamps are equal, event_id works as a tiebreaker
-            successors.sort(key=lambda e: (e.creation_timestamp, e.event_id))
+            successors.sort(
+                key=lambda e: (e.vector_timestamp,
+                               e.creation_timestamp,
+                               e.event_id))
             event = successors[0]
             if event.action == "update":
-                entry = Entry(entry_id, event.value, event.event_id)
+                entry.value = event.value
+                entry.last_event_id = event.event_id
             elif event.action == "delete":
                 return
             else:
@@ -235,6 +232,7 @@ class Node:
         logger.info(f"recieved message:{message}")
         event = Event.from_dict(message[1])
         try:
+            self._vector_clock.update(event.vector_timestamp)
             self._apply_event(event)
         except:
             logger.exception("Could not handle the message")

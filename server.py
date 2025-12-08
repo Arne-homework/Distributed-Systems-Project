@@ -12,6 +12,7 @@ import os
 import time
 import json
 import hashlib
+import logging_config
 
 from messenger import ReliableMessenger, Transport, UnreliableTransport
 from node import Node

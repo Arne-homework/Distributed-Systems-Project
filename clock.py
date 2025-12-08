@@ -14,7 +14,7 @@ class IClock:
         returns the time.
         Is guaranteed to deliver a monoton increasing time.
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
 
 class ExternalDeterminedClock(IClock):
@@ -65,7 +65,8 @@ class ClockServer:
         Set a factory for clocks.
 
         Clears all already created clocks.
-        New calls to get_clock_for_node will create new clocks, however previously retrieved clocks outside this class remain valid.
+        New calls to get_clock_for_node will create new clocks,
+        however previously retrieved clocks outside this class remain valid.
 
         intended for testing.
         """

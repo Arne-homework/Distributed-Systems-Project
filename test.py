@@ -63,13 +63,13 @@ def run_simulation(nodes, transports, duration_seconds=5.0, time_step=0.01, star
 
         for _, clock in clock_server.all_clocks():
             clock.set_time(t)
-            
+
         for node in nodes:
             if not node.is_crashed():
                 node.update()
 
         t += time_step
-        time.sleep(0.0001) 
+        time.sleep(0.0001)
 
     return t
 
@@ -78,12 +78,12 @@ def check_consistency(nodes, expected_count):
     print("\n--- Consistency Check ---")
     reference_entries = None
     all_consistent = True
-    
+
     for node in nodes:
         if not node.is_crashed():
             reference_entries = node.get_entries()
             break
-            
+
     if reference_entries is None:
         print("All nodes are crashed! Cannot check consistency.")
         return False
@@ -92,7 +92,7 @@ def check_consistency(nodes, expected_count):
         if node.is_crashed():
             print(f"Node {node.own_id}: CRASHED (Skipping check)")
             continue
-            
+
         entries = node.get_entries()
         print(f"Node {node.own_id}: {len(entries)} entries")
 
@@ -112,30 +112,30 @@ def test_partition_recovery():
     print("\n" + "=" * 60)
     print("TASK 3a: NETWORK PARTITION TEST")
     print("=" * 60)
-    
+
     # --- FIX: Reset the global clock server ---
     clock_server.set_clock_factory(lambda n: ExternalDeterminedClock())
     # ------------------------------------------
 
     r = random.Random(100)
     nodes = [Node(ReliableMessenger(i, NUM_SERVERS, timeout=2.0), i, NUM_SERVERS, r) for i in range(NUM_SERVERS)]
-    transports = create_transports(nodes, "medium", r) 
-    
+    transports = create_transports(nodes, "medium", r)
+
     current_time = 0.0
 
     print("1. Network Healthy. Creating initial entries...")
     nodes[0].create_entry("Init_Entry")
     current_time = run_simulation(nodes, transports, duration_seconds=2.0, start_time=current_time)
-    
+
     if not check_consistency(nodes, 1):
         print("Initial setup failed consistency!"); return
 
     print("\n2. CREATING PARTITION: [0,1] <---> [2,3]")
     print("   Setting drop_rate = 1.0 for cross-partition links.")
-    
+
     partition_A = {0, 1}
     partition_B = {2, 3}
-    
+
     for (src, dst), transport in transports.items():
         if (src in partition_A and dst in partition_B) or \
            (src in partition_B and dst in partition_A):
@@ -143,7 +143,7 @@ def test_partition_recovery():
 
     print("   Node 0 creates 'Entry_A' (Only [0,1] should see this)")
     nodes[0].create_entry("Entry_A")
-    
+
     print("   Node 3 creates 'Entry_B' (Only [2,3] should see this)")
     nodes[3].create_entry("Entry_B")
 
@@ -152,10 +152,10 @@ def test_partition_recovery():
     print("\n3. Verifying Divergence (Nodes should differ)...")
     entries_0 = nodes[0].get_entries()
     entries_3 = nodes[3].get_entries()
-    
+
     print(f"   Node 0 count: {len(entries_0)} (Expected 2: Init + A)")
     print(f"   Node 3 count: {len(entries_3)} (Expected 2: Init + B)")
-    
+
     if len(entries_0) == 2 and len(entries_3) == 2 and entries_0 != entries_3:
         print("   [OK] Partitions successfully diverged.")
     else:
@@ -164,7 +164,7 @@ def test_partition_recovery():
     print("\n4. HEALING PARTITION")
     for transport in transports.values():
         transport.set_drop_rate(0.0)
-        
+
     print("   Running simulation for convergence...")
     current_time = run_simulation(nodes, transports, duration_seconds=10.0, start_time=current_time)
 
@@ -191,17 +191,17 @@ def test_crash_recovery():
 
     print("\n2. CRASHING Node 1")
     nodes[1].status["crashed"] = True
-    
+
     print("   Node 0 creates 'Entry_During_Crash'")
     nodes[0].create_entry("Entry_During_Crash")
-    
+
     current_time = run_simulation(nodes, transports, duration_seconds=4.0, start_time=current_time)
-    
+
     print("\n3. Verifying Node 1 missed the update (Queued but not processed)")
 
     print("\n4. RECOVERING Node 1")
     nodes[1].status["crashed"] = False
-    
+
     print("   Running simulation for catch-up...")
     current_time = run_simulation(nodes, transports, duration_seconds=10.0, start_time=current_time)
 

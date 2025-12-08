@@ -55,6 +55,21 @@ class TestVectorTimestamp(ut.TestCase):
         self.assertFalse(sut0 < sut1)
         self.assertFalse(sut1 < sut0)
 
+    def test_sort(self):
+        """
+        VectorTimestamps can be sorted.
+        """
+        timestamps = [VectorTimestamp([3, 3, 2, 2]),
+                      VectorTimestamp([1, 2, 3, 4]),
+                      VectorTimestamp([0, 0, 0, 0])]
+        sorted_timestamps = sorted(timestamps)
+        # since python sorting is stable by default.
+        # The order of concurrent timestamps stays unchanged.
+        self.assertEqual(sorted_timestamps,
+                         [VectorTimestamp([0, 0, 0, 0]),
+                          VectorTimestamp([3, 3, 2, 2]),
+                          VectorTimestamp([1, 2, 3, 4])])
+
     def test_concurrent(self):
         """
         There are VectorTimestamps that are not equal but also not less than ordered.
