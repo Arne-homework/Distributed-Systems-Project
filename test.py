@@ -105,18 +105,19 @@ def check_consistency(nodes, expected_count):
             print(f"  [FAIL] Expected {expected_count} entries, got {len(entries)}")
             all_consistent = False
         elif entries != reference_entries:
-            print(f"  [FAIL] Entries differ from Reference Node")
+            print("  [FAIL] Entries differ from Reference Node")
             all_consistent = False
         else:
-            print(f"  [OK] Consistent")
+            print("  [OK] Consistent")
 
     return all_consistent
+
 
 def test_check_eventual_consistency_vc():
     print("\n" + "=" * 60)
     print("TASK 3: Eventual Consistency")
     print("=" * 60)
-    
+
     clock_server.set_clock_factory(lambda n: ExternalDeterminedClock())
 
     r = random.Random(100)
@@ -124,7 +125,7 @@ def test_check_eventual_consistency_vc():
     transports = create_transports(nodes, SCENARIO, r)
 
     current_time = 0.0
-    print("1. Creating Entries on all Nodes in parralel...")
+    print("1. Creating Entries on all Nodes in parallel...")
 
     for inode, node in enumerate(nodes):
         node.create_entry(f"Entry 0-{inode}")
@@ -138,12 +139,12 @@ def test_check_eventual_consistency_vc():
     else:
         print("\n>>> EVENTUAL CONSISTENCY TEST FAILED <<<")
 
-    
+
 def test_conflict_resolution():
     print("\n" + "=" * 60)
     print("TASK 4: Conflict Resolution")
     print("=" * 60)
-    
+
     clock_server.set_clock_factory(lambda n: ExternalDeterminedClock())
 
     r = random.Random(100)
@@ -162,24 +163,30 @@ def test_conflict_resolution():
         duration_seconds=2.0,
         start_time=current_time)
     rand.shuffle(entry_ids)
-    ids_copy = set(entry_ids)
-    def update_entry(node,inode):
-        node.update_entry(entry_ids[inode], f"Entry 1-{inode}")
-    def delete_entry(node,inode):
-        node.delete_entry(entry_ids[inode])
-        ids_copy.remove(entry_ids[inode])
-    for inode,node in enumerate(nodes):
+    modified_entry_id = entry_ids[0]
+
+    print(f"2. Updating/Deleting  entry {modified_entry_id} in parallel")
+
+    def update_entry(node, inode):
+        node.update_entry(modified_entry_id, f"Entry 1-{inode}")
+
+    def delete_entry(node, inode):
+        node.delete_entry(modified_entry_id)
+
+    for inode, node in enumerate(nodes):
         rand.choice([update_entry, delete_entry])(node, inode)
     current_time = run_simulation(
         nodes, transports,
         duration_seconds=2.0,
         start_time=current_time)
-    
-    
-    if check_consistency(nodes, len(ids_copy)):
+
+    # We don't know if an update_entry or a delete_entry wins.
+    #  THis would be dependend on the event_id.
+    if (check_consistency(nodes, nodes[0].board.get_number_of_entries())):
         print("\n>>> EVENTUAL CONSISTENCY TEST PASSED <<<")
     else:
         print("\n>>> EVENTUAL CONSISTENCY TEST FAILED <<<")
+
 
 def test_crash_recovery():
     print("\n" + "=" * 60)
@@ -261,7 +268,7 @@ The tests  are implemented in here  (test_conflict_resolution)
 
 """
 
-        
+
 if __name__ == "__main__":
     test_check_eventual_consistency_vc()
     test_conflict_resolution()

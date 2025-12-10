@@ -2,11 +2,11 @@
 import random
 import messenger
 import logging
+from abc import ABC, abstractmethod
 from clock import clock_server
 from event import Event, EventStore
 from id_generator import RandomGenerator
 from vector_clock import VectorClock
-from functools import cmp_to_key
 
 logger = logging.getLogger(__name__)
 
@@ -25,36 +25,80 @@ class Entry:
     def __str__(self):
         return str(self.to_dict())
 
-#<
+
+class ISorter(ABC):
+    # Interface for sorters.
+    # We are supposed to compare different Logical Clocks
+    # To quickly switch between the used Clock, we implement different sorters
+    #  for differen clocks
+    #  as the clocks are basically only used for sorting.
+    @abstractmethod
+    def sort_entries(self, entries: list[Entry]):
+        """
+        method to sort entries on the board.
+        Returns a sorted copy of the input list.
+        """
+        return entries[:]
+
+    @abstractmethod
+    def sort_events(self, events: list[Event]):
+        """
+        method to sort events.
+        Returns a sorted copy of the input list.
+        """
+        return events[:]
+
+
 class Board:
-    def __init__(self):
+    def __init__(self, sorter: ISorter):
         self.indexed_entries = {}
+        self._sorter = sorter
 
     def add_entry(self, entry):
         self.indexed_entries[entry.id] = entry
 
     def get_ordered_entries(self):
-        def cmp(entry0, entry1):
-            if entry0.vector_timestamp.is_concurrent(
-                    entry1.vector_timestamp):
-                return 0
-            else:
-                return -1 if (entry0.vector_timestamp <
-                              entry1.vector_timestamp) else 1
-        l1 = sorted(
-            list(self.indexed_entries.values()),
-            key=lambda e: e.id)
-        return sorted(l1, key=cmp_to_key(cmp))
+        return self._sorter.sort_entries(self.indexed_entries.values())
 
     def get_number_of_entries(self):
         return len(self.indexed_entries)
 
 
+class VectorClockSorter(ISorter):
+    """
+    Sorts Entries and Events according to their vector clock.
+    Uses the ids as tiebreaker.
+    """
+
+    def sort_entries(self, entries: list[Entry]):
+        # pythons sort is by default stable.
+        # we first sort according to the tiebreaker.
+        #  these entries stay in the tiebreaker order,
+        #  if they are tied in the second sort
+        entries = sorted(
+            entries,
+            key=lambda e: e.id)
+        return sorted(entries, key=lambda e: e.vector_timestamp)
+
+    def sort_events(self, events: list[Event]):
+        # see sort_entries
+        events = sorted(
+            events,
+            key=lambda e: e.event_id)
+        events = sorted(
+            events,
+            key=lambda e: e.vector_timestamp)
+        return events
+
+
 class Node:
     def __init__(
             self, m: messenger.ReliableMessenger,
-            own_id: int, num_servers: int, r: random.Random
+            own_id: int, num_servers: int, r: random.Random,
+            sorter: ISorter = None
     ):
+        sorter = sorter if sorter is not None else VectorClockSorter()
+        self._sorter = sorter
         self._clock = clock_server.get_clock_for_node(own_id)
         self._vector_clock = VectorClock.create_new(own_id, num_servers)
         self.messenger = m
@@ -62,7 +106,7 @@ class Node:
         self.num_servers = num_servers
         self.all_servers = range(num_servers)
         self.other_servers = [i for i in self.all_servers if i != own_id]
-        self.board = Board()
+        self.board = Board(sorter)
         self.status = {
             "crashed": False,
             "notes": "",
@@ -107,7 +151,7 @@ class Node:
             [])
         try:
             self._apply_event(event)
-        except :
+        except:
             logger.exception("Could not create event")
         else:
             logger.info(
@@ -155,7 +199,7 @@ class Node:
             [depended_event_id])
         try:
             self._apply_event(event)
-        except :
+        except:
             logger.exception("Could not delete entry.")
         else:
             logger.info(
@@ -200,16 +244,7 @@ class Node:
                           for successor_id
                           in history.inverted_dependencies[event.event_id]]
             assert len(successors) > 0
-            # we sort by timestamp & event_id
-            # if the time difference between events is larger than
-            # the clock deviation between the nodes clocks was,
-            # this allows us to prefer earlier events,
-            # otherways it is by chance but deterministic.
-            # if timestamps are equal, event_id works as a tiebreaker
-            successors.sort(
-                key=lambda e: (e.vector_timestamp,
-                               e.creation_timestamp,
-                               e.event_id))
+            successors = self._sorter.sort_events(successors)
             event = successors[0]
             if event.action == "update":
                 entry.value = event.value
