@@ -7,17 +7,19 @@ from clock import clock_server
 from event import Event, EventStore
 from id_generator import RandomGenerator
 from vector_clock import VectorClock
-from typing import Union, Iterable
+from bloom_clock import BloomClock
+from typing import Union
 
 logger = logging.getLogger(__name__)
 
 
 class Entry:
-    def __init__(self, id, value, vector_timestamp, last_event_id):
+    def __init__(self, id, value, vector_timestamp, bloom_timestamp, last_event_id):
         self.id = id
         self.value = value
         self.vector_timestamp = vector_timestamp
-        # The id of the last even defining this entries value.
+        self.bloom_timestamp = bloom_timestamp
+        # The id of the last event defining this entries value.
         self.last_event_id = last_event_id
 
     def to_dict(self) -> dict:
@@ -92,6 +94,25 @@ class VectorClockSorter(ISorter):
         return events
 
 
+class BloomClockSorter(ISorter):
+    """
+    Sorts Entries and Events according to their bloom clock.
+    Uses counter as primary sort key, then IDs as tiebreaker.
+    """
+
+    def sort_entries(self, entries: list[Entry]):
+        # Sort by ID first (tiebreaker)
+        entries = sorted(entries, key=lambda e: e.id)
+        # Then sort by bloom clock counter
+        return sorted(entries, key=lambda e: e.bloom_timestamp.counter)
+
+    def sort_events(self, events: list[Event]):
+        # Sort by event ID first (tiebreaker)
+        events = sorted(events, key=lambda e: e.event_id)
+        # Then sort by bloom clock counter
+        return sorted(events, key=lambda e: e.bloom_timestamp.counter)
+
+
 class Node:
     def __init__(
             self, m: messenger.ReliableMessenger,
@@ -102,6 +123,7 @@ class Node:
         self._sorter = sorter
         self._clock = clock_server.get_clock_for_node(own_id)
         self._vector_clock = VectorClock.create_new(own_id, num_servers)
+        self._bloom_clock = BloomClock.create_new(own_id, num_servers)
         self.messenger = m
         self.own_id = own_id
         self.num_servers = num_servers
@@ -125,6 +147,9 @@ class Node:
     def get_current_vector_timestamp(self):
         return self._vector_clock.current_timestamp
 
+    def get_current_bloom_timestamp(self):
+        return self._bloom_clock.current_timestamp
+
     def get_entries(self):
         ordered_entries = self.board.get_ordered_entries()
         return list(map(lambda entry: entry.to_dict(), ordered_entries))
@@ -141,11 +166,13 @@ class Node:
         """
         timestamp = self._get_timestamp()
         self._vector_clock.increment()
+        self._bloom_clock.increment()
         event = Event(
             self._event_id_generator.generate(),
             self._entry_id_generator.generate(),
             timestamp,
             self._vector_clock.current_timestamp,
+            self._bloom_clock.current_timestamp,
             0,
             "create",
             value,
@@ -165,11 +192,13 @@ class Node:
         creation_timestamp = self._get_timestamp()
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id
         self._vector_clock.increment()
+        self._bloom_clock.increment()
         event = Event(
             self._event_id_generator.generate(),
             entry_id,
             creation_timestamp,
             self._vector_clock.current_timestamp,
+            self._bloom_clock.current_timestamp,
             0,
             "update",
             value,
@@ -189,11 +218,13 @@ class Node:
         creation_timestamp = self._get_timestamp()
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id
         self._vector_clock.increment()
+        self._bloom_clock.increment()
         event = Event(
             self._event_id_generator.generate(),
             entry_id,
             creation_timestamp,
             self._vector_clock.current_timestamp,
+            self._bloom_clock.current_timestamp,
             0,
             "delete",
             "",
@@ -239,6 +270,7 @@ class Node:
         entry = Entry(entry_id,
                       event.value,
                       event.vector_timestamp,
+                      event.bloom_timestamp,
                       event.event_id)
         while (event.event_id in history.inverted_dependencies):
             successors = [history.events[successor_id]
@@ -249,6 +281,7 @@ class Node:
             event = successors[0]
             if event.action == "update":
                 entry.value = event.value
+                entry.bloom_timestamp = event.bloom_timestamp
                 entry.last_event_id = event.event_id
             elif event.action == "delete":
                 return
@@ -269,6 +302,7 @@ class Node:
         event = Event.from_dict(message[1])
         try:
             self._vector_clock.update(event.vector_timestamp)
+            self._bloom_clock.update(event.bloom_timestamp)
             self._apply_event(event)
         except:
             logger.exception("Could not handle the message")
