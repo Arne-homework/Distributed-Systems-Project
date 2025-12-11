@@ -7,6 +7,7 @@ from clock import clock_server
 from event import Event, EventStore
 from id_generator import RandomGenerator
 from vector_clock import VectorClock
+from typing import Union, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ class Board:
         self.indexed_entries[entry.id] = entry
 
     def get_ordered_entries(self):
-        return self._sorter.sort_entries(self.indexed_entries.values())
+        return self._sorter.sort_entries(list(self.indexed_entries.values()))
 
     def get_number_of_entries(self):
         return len(self.indexed_entries)
@@ -95,7 +96,7 @@ class Node:
     def __init__(
             self, m: messenger.ReliableMessenger,
             own_id: int, num_servers: int, r: random.Random,
-            sorter: ISorter = None
+            sorter: Union[ISorter, None] = None
     ):
         sorter = sorter if sorter is not None else VectorClockSorter()
         self._sorter = sorter

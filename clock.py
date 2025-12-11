@@ -53,7 +53,7 @@ class ClockServer:
             self._clocks[node_id] = self._clock_factory(node_id)
         return self._clocks[node_id]
 
-    def all_clocks(self) -> Iterable[tuple[IClock]]:
+    def all_clocks(self) -> Iterable[tuple[int,IClock]]:
         """
         Returns a generator for all already created clocks.
         """

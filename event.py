@@ -136,7 +136,7 @@ class History:
 
 
 class EventStore:
-    def __init__(self, name: String, echo: bool = True):
+    def __init__(self, name: str, echo: bool = True):
         self._engine = self._create_engine(name, echo)
 
     def _create_engine(self, name, echo=True):
