@@ -1,6 +1,6 @@
 import unittest as ut
 from clock import clock_server, ExternalDeterminedClock
-from node import Node
+from node import Node, BloomClockSorter
 from vector_clock import VectorTimestamp
 from messenger import ReliableMessenger
 from transport import Transport
@@ -31,10 +31,10 @@ class TimestampTest(ut.TestCase):
                 )
         return transports
 
-    def _create_nodes(self, num_nodes):
+    def _create_nodes(self, num_nodes, sorter=None):
         r = random.Random(43)
         nodes = [Node(ReliableMessenger(i, num_nodes, timeout=2.0),
-                      i, num_nodes, r)
+                      i, num_nodes, r, sorter)
                  for i in range(num_nodes)]
         return nodes
 
@@ -44,7 +44,7 @@ class TimestampTest(ut.TestCase):
         """
         time_offset = 3.0
         time_step = 0.1
-        nodes = self._create_nodes(2)
+        nodes = self._create_nodes(2,sorter=BloomClockSorter())
         transports = self._create_transports(nodes)
         number_of_iterations = 100
 

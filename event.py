@@ -6,6 +6,7 @@ from sqlalchemy import String
 from sqlalchemy import text
 from sqlalchemy import create_engine
 from vector_clock import VectorTimestamp
+from bloom_clock import BloomTimestamp
 import json
 
 
@@ -102,15 +103,11 @@ class Event:
                 and (self._depended_event_ids == other._depended_event_ids))
 
     def to_dict(self):
-        bloom_filter, bloom_counter = self._bloom_timestamp.to_list()
         return {"event_id": self._event_id,
                 "entry_id": self._entry_id,
                 "creation_timestamp": self._creation_timestamp,
                 "vector_timestamp": self._vector_timestamp.to_list(),
-                "bloom_timestamp": {
-                    "filter": bloom_filter,
-                    "counter": bloom_counter
-                },
+                "bloom_timestamp": self._bloom_timestamp.to_list(),
                 "lamport_timestamp": self._lamport_timestamp,
                 "action": self._action,
                 "value": self._value,
@@ -118,23 +115,16 @@ class Event:
 
     @staticmethod
     def from_dict(dict_):
-        from bloom_clock import BloomTimestamp
-        dd = dict_  # just make it shorter to write
-        bloom_ts_data = dd.get("bloom_timestamp", {"filter": [], "counter": 0})
-        bloom_timestamp = BloomTimestamp(
-            bloom_ts_data["filter"],
-            bloom_ts_data["counter"]
-        )
         return Event(
-            dd["event_id"],
-            dd["entry_id"],
-            dd["creation_timestamp"],
-            VectorTimestamp.from_list(dd["vector_timestamp"]),
-            bloom_timestamp,
-            dd["lamport_timestamp"],
-            dd["action"],
-            dd["value"],
-            dd["depended_event_ids"])
+            dict_["event_id"],
+            dict_["entry_id"],
+            dict_["creation_timestamp"],
+            VectorTimestamp.from_list(dict_["vector_timestamp"]),
+            BloomTimestamp.from_list(dict_["bloom_timestamp"]),
+            dict_["lamport_timestamp"],
+            dict_["action"],
+            dict_["value"],
+            dict_["depended_event_ids"])
 
 
 class History:
@@ -189,7 +179,6 @@ class EventStore:
 
         May throw if any constraints are violated.
         """
-        bloom_filter, bloom_counter = event.bloom_timestamp.to_list()
         with self._engine.begin() as conn:
             conn.execute(
                 text("INSERT INTO events"
@@ -202,10 +191,8 @@ class EventStore:
                  "creation_timestamp": event.creation_timestamp,
                  "vector_timestamp": json.dumps(
                      event.vector_timestamp.to_list()),
-                 "bloom_timestamp": json.dumps({
-                     "filter": bloom_filter,
-                     "counter": bloom_counter
-                 }),
+                 "bloom_timestamp": json.dumps(
+                     event.bloom_timestamp.to_list()),
                  "lamport_timestamp": event.lamport_timestamp,
                  "action": event.action,
                  "value": event.value})
@@ -220,11 +207,10 @@ class EventStore:
                      for depended_event_id in event.depended_event_ids]
                 )
 
-    def get_history(self, entry_id: String):
+    def get_history(self, entry_id: str)-> History:
         """
         return the full history of an entry identified by the entries id.
         """
-        from bloom_clock import BloomTimestamp
         with self._engine.begin() as conn:
             events_list = list(conn.execute(
                 text(
@@ -263,17 +249,15 @@ class EventStore:
                 event_id, entry_id, creation_timestamp, vector_timestamp, \
                      bloom_timestamp, lamport_timestamp, action, value = event_tuple
                 vector_timestamp = VectorTimestamp(json.loads(vector_timestamp))
-                bloom_ts_data = json.loads(bloom_timestamp) if bloom_timestamp else {"filter": [], "counter": 0}
-                bloom_timestamp = BloomTimestamp(
-                    bloom_ts_data.get("filter", []),
-                    bloom_ts_data.get("counter", 0)
-                )
+                bloom_timestamp = BloomTimestamp.from_list(
+                    json.loads(bloom_timestamp))
                 dependend_events = (dependencies[event_id]
                                     if (event_id in dependencies)
                                     else [])
                 events[event_id] = Event(event_id, entry_id,
                                          creation_timestamp, vector_timestamp,
-                                         bloom_timestamp, lamport_timestamp, action,
+                                         bloom_timestamp, lamport_timestamp,
+                                         action,
                                          value, dependend_events)
         diff = set(events.keys())-set(dependencies.keys())
         root_events = [events[id] for id in diff]
