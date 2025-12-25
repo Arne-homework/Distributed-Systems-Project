@@ -72,7 +72,7 @@ def check_performance(sorter, iterations):
 if __name__ == "__main__":
     iterations = 100
 
-    print("\nTesting Vector Clock Sorter:")
+    print("Testing Vector Clock Sorter:")
     num_before, num_after = check_performance(VectorClockSorter(), iterations)
     print(f"{num_before}/{iterations}")
     

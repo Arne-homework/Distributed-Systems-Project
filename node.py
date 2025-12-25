@@ -20,6 +20,7 @@ class Entry:
                  value,
                  vector_timestamp,
                  bloom_timestamp,
+                 lamport_timestamp,
                  last_event_id):
         self.id = id
         self.value = value

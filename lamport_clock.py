@@ -1,6 +1,5 @@
 """
 Lamport Clock implementation
-Provides a simple integer counter to establish a partial ordering of events
 """
 
 class LamportClock:
@@ -8,7 +7,7 @@ class LamportClock:
         self._value = initial_time
 
     @classmethod
-    def create_new(cls) -> "LamportClock":
+    def create_new(cls):
         return cls(0)
 
     def increment(self):

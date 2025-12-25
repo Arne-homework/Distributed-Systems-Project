@@ -1,0 +1,160 @@
+
+Testing Vector Clock Sorter:
+ERROR:node:Could not create event
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 206, in create_entry
+    self._apply_event(event)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 281, in _apply_event
+    self._regenerate_entry(event.entry_id)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 299, in _regenerate_entry
+    entry = Entry(entry_id,
+                  event.value,
+    ...<2 lines>...
+                  event.lamport_timestamp,
+                  event.event_id)
+TypeError: Entry.__init__() takes 6 positional arguments but 7 were given
+ERROR:node:Could not create event
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 206, in create_entry
+    self._apply_event(event)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 281, in _apply_event
+    self._regenerate_entry(event.entry_id)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 299, in _regenerate_entry
+    entry = Entry(entry_id,
+                  event.value,
+    ...<2 lines>...
+                  event.lamport_timestamp,
+                  event.event_id)
+TypeError: Entry.__init__() takes 6 positional arguments but 7 were given
+ERROR:node:Could not create event
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 206, in create_entry
+    self._apply_event(event)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 281, in _apply_event
+    self._regenerate_entry(event.entry_id)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 299, in _regenerate_entry
+    entry = Entry(entry_id,
+                  event.value,
+    ...<2 lines>...
+                  event.lamport_timestamp,
+                  event.event_id)
+TypeError: Entry.__init__() takes 6 positional arguments but 7 were given
+ERROR:node:Could not create event
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 206, in create_entry
+    self._apply_event(event)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 281, in _apply_event
+    self._regenerate_entry(event.entry_id)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 299, in _regenerate_entry
+    entry = Entry(entry_id,
+                  event.value,
+    ...<2 lines>...
+                  event.lamport_timestamp,
+                  event.event_id)
+TypeError: Entry.__init__() takes 6 positional arguments but 7 were given
+ERROR:node:Could not create event
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 206, in create_entry
+    self._apply_event(event)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 281, in _apply_event
+    self._regenerate_entry(event.entry_id)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 299, in _regenerate_entry
+    entry = Entry(entry_id,
+                  event.value,
+    ...<2 lines>...
+                  event.lamport_timestamp,
+                  event.event_id)
+TypeError: Entry.__init__() takes 6 positional arguments but 7 were given
+ERROR:node:Could not create event
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 206, in create_entry
+    self._apply_event(event)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 281, in _apply_event
+    self._regenerate_entry(event.entry_id)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 299, in _regenerate_entry
+    entry = Entry(entry_id,
+                  event.value,
+    ...<2 lines>...
+                  event.lamport_timestamp,
+                  event.event_id)
+TypeError: Entry.__init__() takes 6 positional arguments but 7 were given
+ERROR:node:Could not create event
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 206, in create_entry
+    self._apply_event(event)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 281, in _apply_event
+    self._regenerate_entry(event.entry_id)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 299, in _regenerate_entry
+    entry = Entry(entry_id,
+                  event.value,
+    ...<2 lines>...
+                  event.lamport_timestamp,
+                  event.event_id)
+TypeError: Entry.__init__() takes 6 positional arguments but 7 were given
+ERROR:node:Could not create event
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 206, in create_entry
+    self._apply_event(event)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 281, in _apply_event
+    self._regenerate_entry(event.entry_id)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 299, in _regenerate_entry
+    entry = Entry(entry_id,
+                  event.value,
+    ...<2 lines>...
+                  event.lamport_timestamp,
+                  event.event_id)
+TypeError: Entry.__init__() takes 6 positional arguments but 7 were given
+ERROR:node:Could not create event
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 206, in create_entry
+    self._apply_event(event)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 281, in _apply_event
+    self._regenerate_entry(event.entry_id)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 299, in _regenerate_entry
+    entry = Entry(entry_id,
+                  event.value,
+    ...<2 lines>...
+                  event.lamport_timestamp,
+                  event.event_id)
+TypeError: Entry.__init__() takes 6 positional arguments but 7 were given
+ERROR:node:Could not create event
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 206, in create_entry
+    self._apply_event(event)
+    ~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 281, in _apply_event
+    self._regenerate_entry(event.entry_id)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/node.py", line 299, in _regenerate_entry
+    entry = Entry(entry_id,
+                  event.value,
+    ...<2 lines>...
+                  event.lamport_timestamp,
+                  event.event_id)
+TypeError: Entry.__init__() takes 6 positional arguments but 7 were given
+Traceback (most recent call last):
+  File "/run/host/var/opt/environment/docker/appds/./performance_test.py", line 76, in <module>
+    num_before, num_after = check_performance(VectorClockSorter(), iterations)
+                            ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/run/host/var/opt/environment/docker/appds/./performance_test.py", line 52, in check_performance
+    assert nodes[0].get_entries()[-1]["value"] == "Entry 0-9"
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^
+IndexError: list index out of range
