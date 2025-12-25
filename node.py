@@ -8,6 +8,7 @@ from event import Event, EventStore
 from id_generator import RandomGenerator
 from vector_clock import VectorClock
 from bloom_clock import BloomClock
+from lamport_clock import LamportClock
 from typing import Union
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,21 @@ class BloomClockSorter(ISorter):
         # Then sort by bloom clock counter
         return sorted(events, key=lambda e: e.bloom_timestamp)
 
+class LamportClockSorter(ISorter):
+    """
+    Sorts Entries and Events according to their Lamport timestamp.
+    Uses the ids as a deterministic tie-breaker for Total Ordering.
+    """
+    def sort_entries(self, entries: list[Entry]):
+        # Sort by ID first (tie-breaker), then by clock value
+        entries = sorted(entries, key=lambda e: e.id)
+        return sorted(entries, key=lambda e: e.lamport_timestamp)
+
+    def sort_events(self, events: list[Event]):
+        # Sort by event ID first (tie-breaker), then by clock value
+        events = sorted(events, key=lambda e: e.event_id)
+        return sorted(events, key=lambda e: e.lamport_timestamp)
+
 
 class Node:
     def __init__(
@@ -129,6 +145,7 @@ class Node:
         self._clock = clock_server.get_clock_for_node(own_id)
         self._vector_clock = VectorClock.create_new(own_id, num_servers)
         self._bloom_clock = BloomClock.create_new(own_id, 12)
+	self._lamport_clock = LamportClock.create_new()
         self.messenger = m
         self.own_id = own_id
         self.num_servers = num_servers
@@ -173,13 +190,14 @@ class Node:
         event_id = self._event_id_generator.generate()
         self._vector_clock.increment()
         self._bloom_clock.increment(event_id)
+	self._lamport_clock.increment()
         event = Event(
             event_id,
             self._entry_id_generator.generate(),
             timestamp,
             self._vector_clock.current_timestamp,
             self._bloom_clock.current_timestamp,
-            0,
+            self._lamport_clock.value,
             "create",
             value,
             [])
@@ -200,13 +218,14 @@ class Node:
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id
         self._vector_clock.increment()
         self._bloom_clock.increment(event_id)
+	self._lamport_clock.increment()
         event = Event(
             event_id,
             entry_id,
             creation_timestamp,
             self._vector_clock.current_timestamp,
             self._bloom_clock.current_timestamp,
-            0,
+            self._lamport_clock.value,
             "update",
             value,
             [depended_event_id])
@@ -227,13 +246,14 @@ class Node:
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id
         self._vector_clock.increment()
         self._bloom_clock.increment(event_id)
+        self._lamport_clock.increment()
         event = Event(
             event_id,
             entry_id,
             creation_timestamp,
             self._vector_clock.current_timestamp,
             self._bloom_clock.current_timestamp,
-            0,
+            self._lamport_clock.value,
             "delete",
             "",
             [depended_event_id])
@@ -311,6 +331,7 @@ class Node:
         try:
             self._vector_clock.update(event.vector_timestamp)
             self._bloom_clock.update(event.bloom_timestamp)
+            self._lamport_clock.update(event.lamport_timestamp)
             self._apply_event(event)
         except:
             logger.exception("Could not handle the message")
