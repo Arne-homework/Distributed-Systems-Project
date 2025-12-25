@@ -1,6 +1,6 @@
 import unittest as ut
 from clock import clock_server, ExternalDeterminedClock
-from node import Node, BloomClockSorter,VectorClockSorter
+from node import Node, BloomClockSorter, VectorClockSorter, LamportClockSorter
 from vector_clock import VectorTimestamp
 from messenger import ReliableMessenger
 from transport import Transport
@@ -71,7 +71,16 @@ def check_performance(sorter, iterations):
 
 if __name__ == "__main__":
     iterations = 100
+
+    print("\nTesting Vector Clock Sorter:")
     num_before, num_after = check_performance(VectorClockSorter(), iterations)
     print(f"{num_before}/{iterations}")
+    
+    print("\nTesting Bloom Clock Sorter:")
     num_before, num_after = check_performance(BloomClockSorter(), iterations)
     print(f"{num_before}/{iterations}")
+
+    print("\nTesting Lamport Clock Sorter:")
+    num_before, num_after = check_performance(LamportClockSorter(), iterations)
+    print(f"{num_before}/{iterations}")
+

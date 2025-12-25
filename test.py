@@ -15,7 +15,7 @@ import logging
 from transport import Transport, UnreliableTransport
 from messenger import ReliableMessenger
 from clock import clock_server, ExternalDeterminedClock
-from node import Node, BloomClockSorter, VectorClockSorter, LamportClockSorter
+from node import Node
 
 logging.basicConfig( stream=sys.stdout,level=logging.ERROR, force=True)
 
@@ -272,10 +272,6 @@ The tests  are implemented in here  (test_conflict_resolution)
 if __name__ == "__main__":
     iterations = 100
 
-    print("Testing Vector Clock Sorter:")
     test_check_eventual_consistency_vc()
     test_conflict_resolution()
 
-    print("Testing Lamport Clock Sorter:")
-    num_before, num_after = check_performance(LamportClockSorter(), iterations)
-    print(f"{num_before}/{iterations}")

@@ -25,6 +25,7 @@ class Entry:
         self.value = value
         self.vector_timestamp = vector_timestamp
         self.bloom_timestamp = bloom_timestamp
+        self.lamport_timestamp = lamport_timestamp
         # The id of the last event defining this entries value.
         self.last_event_id = last_event_id
 
@@ -145,7 +146,7 @@ class Node:
         self._clock = clock_server.get_clock_for_node(own_id)
         self._vector_clock = VectorClock.create_new(own_id, num_servers)
         self._bloom_clock = BloomClock.create_new(own_id, 12)
-	self._lamport_clock = LamportClock.create_new()
+        self._lamport_clock = LamportClock.create_new()
         self.messenger = m
         self.own_id = own_id
         self.num_servers = num_servers
@@ -190,7 +191,7 @@ class Node:
         event_id = self._event_id_generator.generate()
         self._vector_clock.increment()
         self._bloom_clock.increment(event_id)
-	self._lamport_clock.increment()
+        self._lamport_clock.increment()
         event = Event(
             event_id,
             self._entry_id_generator.generate(),
@@ -218,7 +219,7 @@ class Node:
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id
         self._vector_clock.increment()
         self._bloom_clock.increment(event_id)
-	self._lamport_clock.increment()
+        self._lamport_clock.increment()
         event = Event(
             event_id,
             entry_id,
@@ -299,6 +300,7 @@ class Node:
                       event.value,
                       event.vector_timestamp,
                       event.bloom_timestamp,
+                      event.lamport_timestamp,
                       event.event_id)
         while (event.event_id in history.inverted_dependencies):
             successors = [history.events[successor_id]
@@ -310,6 +312,7 @@ class Node:
             if event.action == "update":
                 entry.value = event.value
                 entry.bloom_timestamp = event.bloom_timestamp
+                entry.lamport_timestamp = event.lamport_timestamp
                 entry.last_event_id = event.event_id
             elif event.action == "delete":
                 return
