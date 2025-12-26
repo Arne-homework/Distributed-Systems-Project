@@ -24,11 +24,10 @@ logging.basicConfig( stream=sys.stdout,level=logging.ERROR, force=True)
 # ============================================================
 NUM_ENTRIES = 5
 NUM_SERVERS = 10
-SCENARIO = "medium"  # Options: 'easy', 'medium', 'hard'
+SCENARIO = "hard"  # Options: 'easy', 'medium', 'hard'
+SIM_DURATION = 20.0
 
 # ============================================================
-
-
 def create_transports(nodes, scenario, r):
     transports = {}
     num_nodes = len(nodes)
@@ -129,10 +128,8 @@ def test_check_eventual_consistency_vc():
 
     for inode, node in enumerate(nodes):
         node.create_entry(f"Entry 0-{inode}")
-    current_time = run_simulation(
-        nodes, transports,
-        duration_seconds=2.0,
-        start_time=current_time)
+  
+    current_time = run_simulation(nodes, transports, duration_seconds=SIM_DURATION, start_time=current_time)
 
     if check_consistency(nodes, NUM_SERVERS):
         print("\n>>> EVENTUAL CONSISTENCY TEST PASSED <<<")
@@ -158,10 +155,9 @@ def test_conflict_resolution():
     for inode, node in enumerate(nodes):
         node.create_entry(f"Entry 0-{inode}")
         entry_ids.append(node.get_entries()[0]["id"] )
-    current_time = run_simulation(
-        nodes, transports,
-        duration_seconds=2.0,
-        start_time=current_time)
+    
+    current_time = run_simulation(nodes, transports, duration_seconds=SIM_DURATION, start_time=current_time)
+    
     rand.shuffle(entry_ids)
     modified_entry_id = entry_ids[0]
 
@@ -175,10 +171,8 @@ def test_conflict_resolution():
 
     for inode, node in enumerate(nodes):
         rand.choice([update_entry, delete_entry])(node, inode)
-    current_time = run_simulation(
-        nodes, transports,
-        duration_seconds=2.0,
-        start_time=current_time)
+    
+    current_time = run_simulation(nodes, transports, duration_seconds=SIM_DURATION, start_time=current_time)
 
     # We don't know if an update_entry or a delete_entry wins.
     #  THis would be dependend on the event_id.
@@ -202,10 +196,8 @@ def test_crash_recovery():
     print("1. ")
     for inode, node in enumerate(nodes):
         node.create_entry(f"Entry 0-{inode}")
+    
     current_time = run_simulation(nodes, transports, duration_seconds=2.0, start_time=current_time)
-
-
-
     current_time = run_simulation(nodes, transports, duration_seconds=10.0, start_time=current_time)
 
     if check_consistency(nodes, 2):
@@ -270,8 +262,23 @@ The tests  are implemented in here  (test_conflict_resolution)
 
 
 if __name__ == "__main__":
-    iterations = 100
+    start_real_time = time.time()
+
+    print("=" * 60)
+    print(f"RUNNING SYSTEM TESTS")
+    print(f"SCENARIO:           {SCENARIO.upper()}")
+    print(f"Nodes:              {NUM_SERVERS}")
+    print(f"Entries per Node:   {NUM_ENTRIES}")
+    print(f"Simulated Duration: {SIM_DURATION}s")
+    print("=" * 60)
 
     test_check_eventual_consistency_vc()
     test_conflict_resolution()
 
+    end_real_time = time.time()
+    total_real_time = end_real_time - start_real_time
+
+    print("=" * 60)
+    print(f"TEST SUITE FINISHED")
+    print(f"Total Real-World Time: {total_real_time:.2f} seconds")
+    print("=" * 60)

@@ -215,6 +215,11 @@ class Node:
             self._send_event(event)
 
     def update_entry(self, entry_id, value):
+    
+        if entry_id not in self.board.indexed_entries:
+            logger.warning(f"Node {self.own_id}: Cannot update unknown entry {entry_id}")
+            return
+
         creation_timestamp = self._get_timestamp()
         event_id = self._event_id_generator.generate()
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id
@@ -243,6 +248,11 @@ class Node:
             self._send_event(event)
 
     def delete_entry(self, entry_id):
+    
+        if entry_id not in self.board.indexed_entries:
+            logger.warning(f"Node {self.own_id}: Cannot delete unknown entry {entry_id}")
+            return
+        
         creation_timestamp = self._get_timestamp()
         event_id = self._event_id_generator.generate()
         depended_event_id = self.board.indexed_entries[entry_id].last_event_id

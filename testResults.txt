@@ -1,0 +1,197 @@
+.
+----------------------------------------------------------------------
+Ran 1 test in 0.003s
+
+OK
+............
+----------------------------------------------------------------------
+Ran 12 tests in 0.000s
+
+OK
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.000s
+
+OK
+.............
+----------------------------------------------------------------------
+Ran 13 tests in 0.004s
+
+OK
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.016s
+
+OK
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.017s
+
+OK
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.761s
+
+OK
+./var/home/core/.local/lib/python3.13/site-packages/sqlalchemy/sql/compiler.py:3945: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7fad1834a020>
+  def bindparam_string(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/var/home/core/.local/lib/python3.13/site-packages/sqlalchemy/sql/compiler.py:3945: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7fad183884f0>
+  def bindparam_string(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/var/home/core/.local/lib/python3.13/site-packages/sqlalchemy/sql/compiler.py:3945: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7fad183889a0>
+  def bindparam_string(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.
+----------------------------------------------------------------------
+Ran 2 tests in 0.034s
+
+OK
+Testing Vector Clock Sorter:
+48/100
+
+Testing Bloom Clock Sorter:
+14/100
+
+Testing Lamport Clock Sorter:
+0/100
+============================================================
+RUNNING SYSTEM TESTS
+SCENARIO:           MEDIUM
+Nodes:              10
+Entries per Node:   5
+Simulated Duration: 2.0s
+============================================================
+
+============================================================
+TASK 3: Eventual Consistency
+============================================================
+1. Creating Entries on all Nodes in parallel...
+
+--- Consistency Check ---
+Node 0: 10 entries
+  [OK] Consistent
+Node 1: 10 entries
+  [OK] Consistent
+Node 2: 10 entries
+  [OK] Consistent
+Node 3: 10 entries
+  [OK] Consistent
+Node 4: 10 entries
+  [OK] Consistent
+Node 5: 10 entries
+  [OK] Consistent
+Node 6: 10 entries
+  [OK] Consistent
+Node 7: 10 entries
+  [OK] Consistent
+Node 8: 10 entries
+  [OK] Consistent
+Node 9: 10 entries
+  [OK] Consistent
+
+>>> EVENTUAL CONSISTENCY TEST PASSED <<<
+
+============================================================
+TASK 4: Conflict Resolution
+============================================================
+1. Creating Entries on all Nodes in parallel...
+2. Updating/Deleting  entry 79acafd450664d5e94f7124fcd80420f in parallel
+
+--- Consistency Check ---
+Node 0: 10 entries
+  [OK] Consistent
+Node 1: 10 entries
+  [OK] Consistent
+Node 2: 10 entries
+  [OK] Consistent
+Node 3: 10 entries
+  [OK] Consistent
+Node 4: 10 entries
+  [OK] Consistent
+Node 5: 10 entries
+  [OK] Consistent
+Node 6: 10 entries
+  [OK] Consistent
+Node 7: 10 entries
+  [OK] Consistent
+Node 8: 10 entries
+  [OK] Consistent
+Node 9: 10 entries
+  [OK] Consistent
+
+>>> EVENTUAL CONSISTENCY TEST PASSED <<<
+============================================================
+TEST SUITE FINISHED
+Total Real-World Time: 0.99 seconds
+============================================================
+============================================================
+RUNNING SYSTEM TESTS
+SCENARIO:           HARD
+Nodes:              10
+Entries per Node:   5
+Simulated Duration: 20.0s
+============================================================
+
+============================================================
+TASK 3: Eventual Consistency
+============================================================
+1. Creating Entries on all Nodes in parallel...
+
+--- Consistency Check ---
+Node 0: 10 entries
+  [OK] Consistent
+Node 1: 10 entries
+  [OK] Consistent
+Node 2: 10 entries
+  [OK] Consistent
+Node 3: 10 entries
+  [OK] Consistent
+Node 4: 10 entries
+  [OK] Consistent
+Node 5: 10 entries
+  [OK] Consistent
+Node 6: 10 entries
+  [OK] Consistent
+Node 7: 10 entries
+  [OK] Consistent
+Node 8: 10 entries
+  [OK] Consistent
+Node 9: 10 entries
+  [OK] Consistent
+
+>>> EVENTUAL CONSISTENCY TEST PASSED <<<
+
+============================================================
+TASK 4: Conflict Resolution
+============================================================
+1. Creating Entries on all Nodes in parallel...
+2. Updating/Deleting  entry 1b72e90351944260b3f0eb8272140c0e in parallel
+
+--- Consistency Check ---
+Node 0: 10 entries
+  [OK] Consistent
+Node 1: 10 entries
+  [OK] Consistent
+Node 2: 10 entries
+  [OK] Consistent
+Node 3: 10 entries
+  [OK] Consistent
+Node 4: 10 entries
+  [OK] Consistent
+Node 5: 10 entries
+  [OK] Consistent
+Node 6: 10 entries
+  [OK] Consistent
+Node 7: 10 entries
+  [OK] Consistent
+Node 8: 10 entries
+  [OK] Consistent
+Node 9: 10 entries
+  [OK] Consistent
+
+>>> EVENTUAL CONSISTENCY TEST PASSED <<<
+============================================================
+TEST SUITE FINISHED
+Total Real-World Time: 7.29 seconds
+============================================================
