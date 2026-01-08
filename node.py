@@ -42,7 +42,7 @@ class ISorter(ABC):
     # We are supposed to compare different Logical Clocks
     # To quickly switch between the used Clock, we implement different sorters
     #  for differen clocks
-    #  as the clocks are basically only used for sorting.
+    #  as the clocks are only used for sorting.
     @abstractmethod
     def sort_entries(self, entries: list[Entry]):
         """

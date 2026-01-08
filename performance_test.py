@@ -8,6 +8,9 @@ import random
 import logging
 import sys
 
+ITERATIONS = 100
+# one node adds INSERTED_EVENTS events the other adds only 1 event concurrently. 
+INSERTED_EVENTS = 10
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -47,9 +50,9 @@ def check_performance(sorter, iterations):
         clock_server.get_clock_for_node(1).set_time(0.0)
         nodes = create_nodes(2, sorter)
         transports = create_transports(nodes)
-        for j in range(10):
+        for j in range(INSERTED_EVENTS):
             nodes[0].create_entry(f"Entry 0-{j}")
-        assert nodes[0].get_entries()[-1]["value"] == "Entry 0-9"
+        assert nodes[0].get_entries()[-1]["value"] == f"Entry 0-{INSERTED_EVENTS-1}"
         entry_id0 = nodes[0].get_entries()[-1]["id"]
         nodes[1].create_entry("Entry 1-0")
         assert nodes[1].get_entries()[-1]["value"] == "Entry 1-0"
@@ -71,16 +74,18 @@ def check_performance(sorter, iterations):
 
 if __name__ == "__main__":
     iterations = 100
-
+    print("Testing how much the logical clocks are confused by multiple updates on a single node.")
+    print("A perfect logical clock will identify the compared events as concurrent and fall back to the comparison of ids.")
+    print(f"This would lead to a result of ratio <ordered before>/<total> of about {int(iterations/2)}/{iterations}")
     print("Testing Vector Clock Sorter:")
     num_before, num_after = check_performance(VectorClockSorter(), iterations)
-    print(f"{num_before}/{iterations}")
+    print(f"<ordered before>/<total>:{num_before}/{iterations}")
     
     print("\nTesting Bloom Clock Sorter:")
     num_before, num_after = check_performance(BloomClockSorter(), iterations)
-    print(f"{num_before}/{iterations}")
+    print(f"<ordered before>/<total>:{num_before}/{iterations}")
 
     print("\nTesting Lamport Clock Sorter:")
     num_before, num_after = check_performance(LamportClockSorter(), iterations)
-    print(f"{num_before}/{iterations}")
+    print(f"<ordered before>/<total>:{num_before}/{iterations}")
 
