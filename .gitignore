@@ -5,3 +5,6 @@ __pycache__
 
 *~
 *.zip
+
+#ignore vscode files
+.vscode
