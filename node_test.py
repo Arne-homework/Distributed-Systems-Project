@@ -1,0 +1,137 @@
+import unittest as ut
+
+import sys
+import random
+from messenger import ReliableMessenger
+from transport import UnreliableTransport
+import logging
+from clock import clock_server, ExternalDeterminedClock
+from node import Node
+
+logging.basicConfig(stream=sys.stdout, level=logging.ERROR, force=True)
+
+
+class TestNode(ut.TestCase):
+    def setUp(self):
+        clock_server.set_clock_factory(lambda n: ExternalDeterminedClock())
+
+    def _make_transport(self, out_queue, in_queue, randomizer):
+        return UnreliableTransport(out_queue, in_queue, randomizer)
+
+    def _make_reliable_messengers(self, num_messengers):
+        messengers = []
+        for i in range(num_messengers):
+            messengers.append(ReliableMessenger(i, num_messengers))
+        return messengers
+
+    def _deliver_messages(self, transports, time):
+        for transport in transports:
+            transport.deliver(time)
+
+    def test_synchronizing_single_entry(self):
+        """
+        A single entry is synchronized between nodes.
+        """
+        messengers = self._make_reliable_messengers(2)
+        randomizer = random.Random(42)
+
+        transports = [
+            self._make_transport(
+                messengers[0].out_queues[1],
+                messengers[1].in_queue,
+                randomizer),
+            self._make_transport(
+                messengers[1].out_queues[0],
+                messengers[0].in_queue,
+                randomizer),
+            ]
+        nodes = [Node(messengers[0], 0, 2, randomizer),
+                 Node(messengers[1], 1, 2, randomizer)]
+
+        nodes[0].create_entry("Just an Entry")
+        timestep = 0.1
+        for i in range(200):
+            time = i * timestep
+            self._deliver_messages(transports, time)
+            for _, clock in clock_server.all_clocks():
+                clock.set_time(time)
+
+            for node in nodes:
+                if not node.is_crashed():
+                    node.update()
+        self.assertEqual(len(nodes[0].get_entries()), 1)
+        self.assertEqual(nodes[0].get_entries()[0]["value"], "Just an Entry")
+        self.assertEqual(len(nodes[1].get_entries()), 1)
+        self.assertEqual(nodes[1].get_entries()[0]["value"], "Just an Entry")
+
+    def test_2(self):
+
+        messengers = self._make_reliable_messengers(3)
+        randomizer = random.Random(42)
+
+        transports = {
+            "0-1": self._make_transport(
+                messengers[0].out_queues[1],
+                messengers[1].in_queue,
+                randomizer),
+            "1-0": self._make_transport(
+                messengers[1].out_queues[0],
+                messengers[0].in_queue,
+                randomizer),
+            "0-2": self._make_transport(
+                messengers[0].out_queues[2],
+                messengers[2].in_queue,
+                randomizer),
+            "2-0": self._make_transport(
+                messengers[2].out_queues[0],
+                messengers[0].in_queue,
+                randomizer),
+            "1-2": self._make_transport(
+                messengers[1].out_queues[2],
+                messengers[2].in_queue,
+                randomizer),
+            "2-1": self._make_transport(
+                messengers[2].out_queues[1],
+                messengers[1].in_queue,
+                randomizer),
+            }
+        nodes = [Node(messengers[0], 0, 3, randomizer),
+                 Node(messengers[1], 1, 3, randomizer),
+                 Node(messengers[2], 2, 3, randomizer),
+                 ]
+
+        nodes[2].create_entry("Entry 0 on Node 2")
+        nodes[2].create_entry("Entry 1 on Node 2")
+        nodes[2].create_entry("Entry 2 on Node 2")
+        nodes[2].create_entry("Entry 3 on Node 2")
+        self.assertEqual(nodes[2].get_logical_time(), 4)
+        timestep = 0.1
+        i = 0
+        time = i * timestep
+        for _, clock in clock_server.all_clocks():
+            clock.set_time(time)
+
+        for node in nodes:
+            if not node.is_crashed():
+                node.update()
+        transports["2-1"].deliver(time)
+
+        nodes[0].create_entry("Entry 0 on Node 0")
+        nodes[1].create_entry("Entry 0 on Node 1")
+        
+        for i in range(1, 200):
+            time = i * timestep
+            for _, clock in clock_server.all_clocks():
+                clock.set_time(time)
+
+            for node in nodes:
+                if not node.is_crashed():
+                    node.update()
+            for transport in transports.values():
+                transport.deliver(time)
+        self.assertEqual(len(nodes[0].get_entries()), 6)
+        self.assertEqual(len(nodes[1].get_entries()), 6)
+        self.assertEqual(len(nodes[2].get_entries()), 6)
+        self.assertEqual(nodes[0].get_entries(), nodes[1].get_entries())
+        self.assertEqual(nodes[1].get_entries(), nodes[2].get_entries())
+        self.assertEqual(nodes[0].get_entries(), nodes[2].get_entries())

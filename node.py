@@ -2,177 +2,112 @@
 import random
 import messenger
 import logging
-from abc import ABC, abstractmethod
 from clock import clock_server
-from event import Event, EventStore
+from event import Event
 from id_generator import RandomGenerator
-from vector_clock import VectorClock
-from bloom_clock import BloomClock
 from lamport_clock import LamportClock
-from typing import Union
+from board import Board
 
 logger = logging.getLogger(__name__)
 
 
-class Entry:
+class AppMessage:
+    REQUEST_TYPE = "Request"
+    REPLY_TYPE = "Reply"
+    PROPAGATE_TYPE = "Propagate"
+    CONFIRM_TYPE = "Confirm"
+
     def __init__(self,
-                 id,
-                 value,
-                 vector_timestamp,
-                 bloom_timestamp,
+                 message_type,
+                 origin,
                  lamport_timestamp,
-                 last_event_id):
-        self.id = id
-        self.value = value
-        self.vector_timestamp = vector_timestamp
-        self.bloom_timestamp = bloom_timestamp
-        self.lamport_timestamp = lamport_timestamp
-        # The id of the last event defining this entries value.
-        self.last_event_id = last_event_id
+                 event_id,
+                 event_dict):
+        # one of REQUEST_TYPE, REPLY_TYPE, PROPAGATE_TYPE, CONFIRM_TYPE
+        self._message_type = message_type
+        # node_id where the message originated
+        self._origin = origin
+        # the lamport timestamp
+        self._lamport_timestamp = lamport_timestamp
+        # id of the event that originated the message chain.
+        self._event_id = event_id
+        # either the dict of the event or an empty string.
+        #  only propagate message has an event.
+        self._event_dict = event_dict
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "value": self.value}
+        return {"message_type": self._message_type,
+                "origin": str(self._origin),
+                "lamport_timestamp": str(self._lamport_timestamp),
+                "event_id": self._event_id,
+                "event_dict": self._event_dict}
 
-    def __str__(self):
-        return str(self.to_dict())
+    @staticmethod
+    def from_dict(dict_):
+        return AppMessage(
+            dict_["message_type"],
+            int(dict_["origin"]),
+            int(dict_["lamport_timestamp"]),
+            dict_["event_id"],
+            dict_["event_dict"])
 
+    @property
+    def message_type(self):
+        return self._message_type
 
-class ISorter(ABC):
-    # Interface for sorters.
-    # We are supposed to compare different Logical Clocks
-    # To quickly switch between the used Clock, we implement different sorters
-    #  for differen clocks
-    #  as the clocks are only used for sorting.
-    @abstractmethod
-    def sort_entries(self, entries: list[Entry]):
-        """
-        method to sort entries on the board.
-        Returns a sorted copy of the input list.
-        """
-        return entries[:]
+    @property
+    def origin(self):
+        return self._origin
 
-    @abstractmethod
-    def sort_events(self, events: list[Event]):
-        """
-        method to sort events.
-        Returns a sorted copy of the input list.
-        """
-        return events[:]
+    @property
+    def lamport_timestamp(self):
+        return self._lamport_timestamp
 
+    @property
+    def event_id(self):
+        return self._event_id
 
-class Board:
-    def __init__(self, sorter: ISorter):
-        self.indexed_entries = {}
-        self._sorter = sorter
-
-    def add_entry(self, entry):
-        self.indexed_entries[entry.id] = entry
-
-    def get_ordered_entries(self):
-        return self._sorter.sort_entries(list(self.indexed_entries.values()))
-
-    def get_number_of_entries(self):
-        return len(self.indexed_entries)
-
-
-class VectorClockSorter(ISorter):
-    """
-    Sorts Entries and Events according to their vector clock.
-    Uses the ids as tiebreaker.
-    """
-
-    def sort_entries(self, entries: list[Entry]):
-        # pythons sort is by default stable.
-        # we first sort according to the tiebreaker.
-        #  these entries stay in the tiebreaker order,
-        #  if they are tied in the second sort
-        entries = sorted(
-            entries,
-            key=lambda e: e.id)
-        return sorted(entries, key=lambda e: e.vector_timestamp)
-
-    def sort_events(self, events: list[Event]):
-        # see sort_entries
-        events = sorted(
-            events,
-            key=lambda e: e.event_id)
-        events = sorted(
-            events,
-            key=lambda e: e.vector_timestamp)
-        return events
-
-
-class BloomClockSorter(ISorter):
-    """
-    Sorts Entries and Events according to their bloom clock.
-    Uses counter as primary sort key, then IDs as tiebreaker.
-    """
-
-    def sort_entries(self, entries: list[Entry]):
-        # Sort by ID first (tiebreaker)
-        entries = sorted(entries, key=lambda e: e.id)
-        # Then sort by bloom clock counter
-        return sorted(entries, key=lambda e: e.bloom_timestamp)
-
-    def sort_events(self, events: list[Event]):
-        # Sort by event ID first (tiebreaker)
-        events = sorted(events, key=lambda e: e.event_id)
-        # Then sort by bloom clock counter
-        return sorted(events, key=lambda e: e.bloom_timestamp)
-
-class LamportClockSorter(ISorter):
-    """
-    Sorts Entries and Events according to their Lamport timestamp.
-    Uses the ids as a deterministic tie-breaker for Total Ordering.
-    """
-    def sort_entries(self, entries: list[Entry]):
-        # Sort by ID first (tie-breaker), then by clock value
-        entries = sorted(entries, key=lambda e: e.id)
-        return sorted(entries, key=lambda e: e.lamport_timestamp)
-
-    def sort_events(self, events: list[Event]):
-        # Sort by event ID first (tie-breaker), then by clock value
-        events = sorted(events, key=lambda e: e.event_id)
-        return sorted(events, key=lambda e: e.lamport_timestamp)
+    @property
+    def event_dict(self):
+        return self._event_dict
 
 
 class Node:
+    IDLE_STATUS = "Idle"
+    REQUESTING_STATUS = "Requesting"
+    INCRITICALSECTION_STATUS = "InCriticalSection"
+
     def __init__(
             self, m: messenger.ReliableMessenger,
-            own_id: int, num_servers: int, r: random.Random,
-            sorter: Union[ISorter, None] = None
+            own_id: int, num_servers: int, r: random.Random
     ):
-        sorter = sorter if sorter is not None else VectorClockSorter()
-        self._sorter = sorter
+        self._status = Node.IDLE_STATUS
         self._clock = clock_server.get_clock_for_node(own_id)
-        self._vector_clock = VectorClock.create_new(own_id, num_servers)
-        self._bloom_clock = BloomClock.create_new(own_id, 12)
         self._lamport_clock = LamportClock.create_new()
         self.messenger = m
         self.own_id = own_id
         self.num_servers = num_servers
         self.all_servers = range(num_servers)
         self.other_servers = [i for i in self.all_servers if i != own_id]
-        self.board = Board(sorter)
+        self.board = Board()
         self.status = {
             "crashed": False,
             "notes": "",
         }
-        # currently we use an in memory database
-        self._event_store = EventStore("sqlite:///:memory:", False)
-        self._event_store.initialize_database()
         self._event_id_generator = RandomGenerator()
         self._entry_id_generator = RandomGenerator()
+        self._event_queue = []
+        # either None or a list of the
+        # [lamport_timestamp, event, recieved_replies]
+        self._request_record = None
+        self._request_queue = []
         self.r = r
+
+    def get_logical_time(self):
+        return self._lamport_clock.value
 
     def is_crashed(self):
         return self.status["crashed"]
-
-    def get_current_vector_timestamp(self):
-        return self._vector_clock.current_timestamp
-
-    def get_current_bloom_timestamp(self):
-        return self._bloom_clock.current_timestamp
 
     def get_entries(self):
         ordered_entries = self.board.get_ordered_entries()
@@ -187,174 +122,193 @@ class Node:
           Each node can create entries independently,
           and must propagate them to all other nodes
           using a gossip-style protocol.
+
+        @param value the value of the newly created entry
         """
-        timestamp = self._get_timestamp()
         event_id = self._event_id_generator.generate()
-        self._vector_clock.increment()
-        self._bloom_clock.increment(event_id)
-        self._lamport_clock.increment()
         event = Event(
             event_id,
             self._entry_id_generator.generate(),
-            timestamp,
-            self._vector_clock.current_timestamp,
-            self._bloom_clock.current_timestamp,
-            self._lamport_clock.value,
             "create",
-            value,
-            [])
-        try:
-            self._apply_event(event)
-        except:
-            logger.exception("Could not create event")
-        else:
-            logger.info(
-                f"Node {self.own_id}: Created entry {event.entry_id}"
-                f" with value '{value}'"
-            )
-            self._send_event(event)
+            value)
+        self._lamport_clock.increment()
+        self._event_queue.append(event)
 
     def update_entry(self, entry_id, value):
-    
-        if entry_id not in self.board.indexed_entries:
-            logger.warning(f"Node {self.own_id}: Cannot update unknown entry {entry_id}")
-            return
+        """
+        Update an entry
+           if the entry doesn't exist (re)-create it.
 
-        creation_timestamp = self._get_timestamp()
+        @param entry_id the id of the entry to be updated
+        @param value new value of the entry
+        """
         event_id = self._event_id_generator.generate()
-        depended_event_id = self.board.indexed_entries[entry_id].last_event_id
-        self._vector_clock.increment()
-        self._bloom_clock.increment(event_id)
-        self._lamport_clock.increment()
         event = Event(
             event_id,
             entry_id,
-            creation_timestamp,
-            self._vector_clock.current_timestamp,
-            self._bloom_clock.current_timestamp,
-            self._lamport_clock.value,
             "update",
-            value,
-            [depended_event_id])
-        try:
-            self._apply_event(event)
-        except:
-            logger.exception("Could not update entry.")
-        else:
-            logger.info(
-                f"Node {self.own_id}: Updated entry {event.entry_id}"
-                f" with value '{value}'"
-            )
-            self._send_event(event)
+            value)
+        self._lamport_clock.increment()
+        self._event_queue.append(event)
 
     def delete_entry(self, entry_id):
-    
-        if entry_id not in self.board.indexed_entries:
-            logger.warning(f"Node {self.own_id}: Cannot delete unknown entry {entry_id}")
-            return
-        
-        creation_timestamp = self._get_timestamp()
+        """
+        Delete an entry
+        is ignored if the entry doesn't exist.
+
+        @param entry_id the id of the entry to be deleted
+        """
         event_id = self._event_id_generator.generate()
-        depended_event_id = self.board.indexed_entries[entry_id].last_event_id
-        self._vector_clock.increment()
-        self._bloom_clock.increment(event_id)
-        self._lamport_clock.increment()
         event = Event(
             event_id,
             entry_id,
-            creation_timestamp,
-            self._vector_clock.current_timestamp,
-            self._bloom_clock.current_timestamp,
-            self._lamport_clock.value,
             "delete",
-            "",
-            [depended_event_id])
+            "")
+        self._lamport_clock.increment()
+        self._event_queue.append(event)
+
+    def _apply_event(self, event):
         try:
-            self._apply_event(event)
-        except:
-            logger.exception("Could not delete entry.")
-        else:
-            logger.info(
-                f"Node {self.own_id}: Deleted {event.entry_id}"
-            )
-            self._send_event(event)
-
-    # Return timestamp
-    def _get_timestamp(self):
-        # The timestamp has a granularity of 1 millisecond.
-        return int(self._clock.get_time()*1000)
-
-    def _apply_event(self, event: Event):
-        """
-        Apply a new event to the board.
-        """
-        self._event_store.add_event(event)
-        self._regenerate_entry(event.entry_id)
-
-    def _regenerate_entry(self, entry_id):
-        """
-        Generate an entry from the stored events.
-        """
-        if entry_id in self.board.indexed_entries:
-            del self.board.indexed_entries[entry_id]
-        history = self._event_store.get_history(entry_id)
-        if len(history.root_events) == 0:
-            # the creation event hasn't been propagated to this node yet.
-            return
-        elif len(history.root_events) == 1:
-            event = history.root_events[0]
-        else:
-            raise Exception(
-                "cannot (yet) handle a history with multiple root elements")
-        assert event.action == "create"
-        entry = Entry(entry_id,
-                      event.value,
-                      event.vector_timestamp,
-                      event.bloom_timestamp,
-                      event.lamport_timestamp,
-                      event.event_id)
-        while (event.event_id in history.inverted_dependencies):
-            successors = [history.events[successor_id]
-                          for successor_id
-                          in history.inverted_dependencies[event.event_id]]
-            assert len(successors) > 0
-            successors = self._sorter.sort_events(successors)
-            event = successors[0]
-            if event.action == "update":
-                entry.value = event.value
-                entry.bloom_timestamp = event.bloom_timestamp
-                entry.lamport_timestamp = event.lamport_timestamp
-                entry.last_event_id = event.event_id
+            if event.action == "create":
+                self.board.add_entry(event.entry_id, event.value)
+            elif event.action == "update":
+                self.board.update_or_create_entry(event.entry_id, event.value)
             elif event.action == "delete":
-                return
+                self.board.delete_entry(event.entry_id)
             else:
-                raise Exception("unknown action f{event.action}")
-        self.board.indexed_entries[entry_id] = entry
+                raise Exception("unknown event")
+        except Exception:
+            logger.exception(f"could not apply event {event.to_dict()}")
 
-    def _send_event(self, event):
-        """send an event to all other nodes"""
-        for i in self.other_servers:
-            self.messenger.send(i, event.to_dict(), self._clock.get_time())
-
-    def handle_message(self, message):
+    def _handle_message(self, message):
         """
         Handle incoming messages from other nodes.
         """
-        logger.info(f"recieved message:{message}")
-        event = Event.from_dict(message[1])
-        try:
-            self._vector_clock.update(event.vector_timestamp)
-            self._bloom_clock.update(event.bloom_timestamp)
-            self._lamport_clock.update(event.lamport_timestamp)
-            self._apply_event(event)
-        except:
-            logger.exception("Could not handle the message")
+        self._lamport_clock.update(message.lamport_timestamp)
+        if message.message_type == AppMessage.REQUEST_TYPE:
+            self._handle_request_message(message)
+        elif message.message_type == AppMessage.REPLY_TYPE:
+            self._handle_reply_message(message)
+        elif message.message_type == AppMessage.PROPAGATE_TYPE:
+            self._handle_propagate_message(message)
+        elif message.message_type == AppMessage.CONFIRM_TYPE:
+            self._handle_confirm_message(message)
+        else:
+            logger.warn(f"Could not handle the message {message.to_dict()}")
+            return
+
+    def _handle_confirm_message(self, message):
+        assert self._request_record is not None
+        self._request_record[3] += 1
+
+    def _handle_propagate_message(self, message):
+        self._apply_event(Event.from_dict(message.event_dict))
+        app_message = AppMessage(
+            AppMessage.CONFIRM_TYPE,
+            self.own_id,
+            self._lamport_clock.value,
+            message.event_id,
+            ""
+            )
+        self._send_to_one(message.origin, app_message)
+
+    def _handle_reply_message(self, message):
+        assert self._request_record is not None
+        self._request_record[2] += 1
+
+    def _handle_request_message(self, message):
+        if self._status == Node.IDLE_STATUS:
+            app_message = AppMessage(
+                AppMessage.REPLY_TYPE,
+                self.own_id,
+                self._lamport_clock.value,
+                message.event_id,
+                "")
+            self._send_to_one(message.origin, app_message)
+        elif self._status == Node.REQUESTING_STATUS:
+            timestamp, event, _, _ = self._request_record
+            if ((timestamp > message.lamport_timestamp)
+                or (timestamp == message.lamport_timestamp
+                    and event.event_id > message.event_id)):
+                app_message = AppMessage(
+                    AppMessage.REPLY_TYPE,
+                    self.own_id,
+                    self._lamport_clock.value,
+                    message.event_id,
+                    "")
+                self._send_to_one(message.origin, app_message)
+            else:
+                self._request_queue.append(message)
+        else:
+            self._reply_queue.append(message)
+
+    def _request_critical_section(self, event):
+        self._status = Node.REQUESTING_STATUS
+        self._request_record = [self._lamport_clock.value, event, 0, 0]
+        app_message = AppMessage(
+            AppMessage.REQUEST_TYPE,
+            self.own_id,
+            self._lamport_clock.value,
+            event.event_id,
+            "")
+        self._send_to_all_others(app_message)
+
+    def _send_to_one(self, destination, app_message):
+        self.messenger.send(
+            destination,
+            app_message.to_dict(),
+            self._clock.get_time())
+
+    def _send_to_all_others(self, app_message):
+        for node_id in self.all_servers:
+            if node_id == self.own_id:
+                continue
+            self.messenger.send(
+                node_id,
+                app_message.to_dict(),
+                self._clock.get_time())
+
+    def _enter_critical_section(self):
+        self._status = Node.INCRITICALSECTION_STATUS
+        event = self._request_record[1]
+        self._apply_event(event)
+        app_message = AppMessage(
+            AppMessage.PROPAGATE_TYPE,
+            self.own_id,
+            self._lamport_clock.value,
+            event.event_id,
+            event.to_dict())
+        self._send_to_all_others(app_message)
+
+    def _exit_critical_section(self):
+        self._request_record = None
+        self._status = Node.IDLE_STATUS
+        while len(self._request_queue) > 0:
+            self._handle_request_message(self._request_queue.pop(0))
 
     def update(self):
         """
         Called periodically by the server to process incoming messages.
         """
+        if self._status == Node.IDLE_STATUS:
+            if len(self._event_queue) > 0:
+                self._request_critical_section(self._event_queue.pop(0))
         time = self._clock.get_time()
         msgs = self.messenger.receive(time)
         for msg in msgs:
-            self.handle_message(msg)
+            logger.info(f"Node {self.own_id} recieved message:{msg} "
+                        f"at logical time {self._lamport_clock.value}")
+            self._handle_message(AppMessage.from_dict(msg[1]))
+        if self._status == Node.IDLE_STATUS:
+            assert self._request_record is None
+        elif self._status == Node.REQUESTING_STATUS:
+            assert self._request_record is not None
+            if self._request_record[2] == self.num_servers - 1:
+                self._enter_critical_section()
+        elif self._status == Node.INCRITICALSECTION_STATUS:
+            assert self._request_record is not None
+            if self._request_record[3] == self.num_servers - 1:
+                self._exit_critical_section()
+                assert self._request_record is None
+        else:
+            logger.error(f"node {self.own_id} in unkown state: {self._status}")
