@@ -17,15 +17,16 @@ from messenger import ReliableMessenger
 from clock import clock_server, ExternalDeterminedClock
 from node import Node
 
-logging.basicConfig( stream=sys.stdout,level=logging.ERROR, force=True)
+logging.basicConfig(stream=sys.stdout, level=logging.ERROR, force=True)
 
 # ============================================================
 # TEST CONFIGURATION
 # ============================================================
-NUM_ENTRIES = 5
+NUM_ENTRIES = 1
 NUM_SERVERS = 10
 SCENARIO = "hard"  # Options: 'easy', 'medium', 'hard'
-SIM_DURATION = 20.0
+SIM_DURATION =55.0
+
 
 # ============================================================
 def create_transports(nodes, scenario, r):
@@ -57,11 +58,14 @@ def create_transports(nodes, scenario, r):
     return transports
 
 
-def run_simulation(nodes, transports, duration_seconds=5.0, time_step=0.01, start_time=0.0):
+def run_simulation(nodes, transports, actions=None, duration_seconds=5.0, time_step=0.01, start_time=0.0):
+    inputs = [] if actions is None else actions
     t = start_time
     iterations = int(duration_seconds / time_step)
 
-    for _ in range(iterations):
+    for i in range(iterations):
+        if i<len(inputs):
+            inputs[i](nodes)
         for transport in transports.values():
             transport.deliver(t)
 
@@ -76,6 +80,10 @@ def run_simulation(nodes, transports, duration_seconds=5.0, time_step=0.01, star
         time.sleep(0.001)
 
     return t
+
+
+def pass_fn(nodes):
+    return
 
 
 def check_consistency(nodes, expected_count):
@@ -112,34 +120,42 @@ def check_consistency(nodes, expected_count):
     return all_consistent
 
 
-def test_check_eventual_consistency_vc():
+################################################
+### scenarios
+
+
+def test_critical_section():
     print("\n" + "=" * 60)
-    print("TASK 3: Eventual Consistency")
+    print("TASK 2: Test Critical Section with Static Coordinator")
     print("=" * 60)
 
     clock_server.set_clock_factory(lambda n: ExternalDeterminedClock())
 
     r = random.Random(100)
-    nodes = [Node(ReliableMessenger(i, NUM_SERVERS, timeout=2.0), i, NUM_SERVERS, r) for i in range(NUM_SERVERS)]
+    nodes = [Node(ReliableMessenger(i, NUM_SERVERS, timeout=1.0), i, NUM_SERVERS, r) for i in range(NUM_SERVERS)]
     transports = create_transports(nodes, SCENARIO, r)
 
     current_time = 0.0
-    print("1. Creating Entries on all Nodes in parallel...")
+    print("1. Creating Entries Node 0")
 
-    for inode, node in enumerate(nodes):
-        node.create_entry(f"Entry 0-{inode}")
-  
-    current_time = run_simulation(nodes, transports, duration_seconds=SIM_DURATION, start_time=current_time)
+    for i in range(NUM_ENTRIES):
+        nodes[0].create_entry(f"Entry {i}")
+    current_time = run_simulation(
+        nodes,
+        transports,
+        actions=[],
+        duration_seconds=SIM_DURATION,
+        start_time=current_time)
 
-    if check_consistency(nodes, NUM_SERVERS):
-        print("\n>>> EVENTUAL CONSISTENCY TEST PASSED <<<")
+    if check_consistency(nodes, NUM_ENTRIES):
+        print("\n>>>  CONSISTENCY TEST PASSED <<<")
     else:
-        print("\n>>> EVENTUAL CONSISTENCY TEST FAILED <<<")
+        print("\n>>>  CONSISTENCY TEST FAILED <<<")
 
 
-def test_conflict_resolution():
+def test_ricart_agravala():
     print("\n" + "=" * 60)
-    print("TASK 4: Conflict Resolution")
+    print("TASK 3: Test Ricart & Agravala Mutual Exclusion")
     print("=" * 60)
 
     clock_server.set_clock_factory(lambda n: ExternalDeterminedClock())
@@ -153,112 +169,19 @@ def test_conflict_resolution():
     print("1. Creating Entries on all Nodes in parallel...")
     entry_ids = []
     for inode, node in enumerate(nodes):
-        node.create_entry(f"Entry 0-{inode}")
-        entry_ids.append(node.get_entries()[0]["id"] )
-    
-    current_time = run_simulation(nodes, transports, duration_seconds=SIM_DURATION, start_time=current_time)
-    
-    rand.shuffle(entry_ids)
-    modified_entry_id = entry_ids[0]
+        for ientry in range(NUM_ENTRIES):
+            node.create_entry(f"Entry {ientry}-{inode}")
+    current_time = run_simulation(
+        nodes,
+        transports,
+        duration_seconds=SIM_DURATION,
+        start_time=current_time)
 
-    print(f"2. Updating/Deleting  entry {modified_entry_id} in parallel")
 
-    def update_entry(node, inode):
-        node.update_entry(modified_entry_id, f"Entry 1-{inode}")
-
-    def delete_entry(node, inode):
-        node.delete_entry(modified_entry_id)
-
-    for inode, node in enumerate(nodes):
-        rand.choice([update_entry, delete_entry])(node, inode)
-    
-    current_time = run_simulation(nodes, transports, duration_seconds=SIM_DURATION, start_time=current_time)
-
-    # We don't know if an update_entry or a delete_entry wins.
-    #  THis would be dependend on the event_id.
-    if (check_consistency(nodes, nodes[0].board.get_number_of_entries())):
-        print("\n>>> EVENTUAL CONSISTENCY TEST PASSED <<<")
+    if (check_consistency(nodes, NUM_ENTRIES*NUM_SERVERS)):
+        print("\n>>>  CONSISTENCY TEST PASSED <<<")
     else:
-        print("\n>>> EVENTUAL CONSISTENCY TEST FAILED <<<")
-
-
-def test_crash_recovery():
-    print("\n" + "=" * 60)
-    print("TASK 3a: CRASH AND RECOVERY TEST")
-    print("=" * 60)
-
-
-    r = random.Random(200)
-    nodes = [Node(ReliableMessenger(i, NUM_SERVERS, timeout=2.0), i, NUM_SERVERS, r) for i in range(NUM_SERVERS)]
-    transports = create_transports(nodes, SCENARIO, r)
-    current_time = 0.0
-
-    print("1. ")
-    for inode, node in enumerate(nodes):
-        node.create_entry(f"Entry 0-{inode}")
-    
-    current_time = run_simulation(nodes, transports, duration_seconds=2.0, start_time=current_time)
-    current_time = run_simulation(nodes, transports, duration_seconds=10.0, start_time=current_time)
-
-    if check_consistency(nodes, 2):
-        print("\n>>> CRASH TEST PASSED <<<")
-    else:
-        print("\n>>> CRASH TEST FAILED <<<")
-
-
-"""
-TODO (Task 2): Test VectorClock implementation here if you didn't create tests in vector_clock.py
-
-The tests are in vector_clock_test.py
-
-On a sensible OS, use
->python3 -m unittest vector_clock_test.py
-use at least python3.11
-"""
-
-
-"""
-TODO (Task 3): Test TimeStamp ordering
-
-Implement tests for:
-1. Causal ordering (when one VC happened before another)
-2. Tie-breaking (when VCs are concurrent, use tie_breaker)
-
-The tests  are implemented in ordering_test.py.
-
-On a sensible OS, use
->python3 -m unittest ordering_test.py
-use at least python3.11
-"""
-
-
-"""
-TODO (Task 3): Test causal consistency
-
-Implement tests to verify:
-1. Entries appear in causal order on all nodes
-2. Concurrent entries are ordered deterministically (tie-breaker)
-3. Vector clocks are updated correctly on send/receive
-
-The tests  are implemented in ordering_test.py and in here  (test_check_eventual_consistency_vc)
-
-On a sensible OS, use
->python3 -m unittest ordering_test.py
-use at least python3.11
-"""
-
-
-"""
-TODO (Task 4): Test conflict resolution (update_entry, delete_entry)
-
-After implementing update_entry() and delete_entry(), test:
-1. Concurrent modifications - deterministic resolution
-2. Concurrent deletions
-3. Delete vs modify conflicts
-
-The tests  are implemented in here  (test_conflict_resolution)
-
-"""
+        print("\n>>>  CONSISTENCY TEST FAILED <<<")
 
 
 if __name__ == "__main__":
@@ -272,9 +195,8 @@ if __name__ == "__main__":
     print(f"Simulated Duration: {SIM_DURATION}s")
     print("=" * 60)
 
-    test_check_eventual_consistency_vc()
-    test_conflict_resolution()
-
+#    test_critical_section()
+    test_ricart_agravala()
     end_real_time = time.time()
     total_real_time = end_real_time - start_real_time
 
@@ -282,3 +204,34 @@ if __name__ == "__main__":
     print(f"TEST SUITE FINISHED")
     print(f"Total Real-World Time: {total_real_time:.2f} seconds")
     print("=" * 60)
+
+
+
+"""
+TODO (Task 1): Test Transactions
+
+Verify that transactions are correctly created and stored for later propagation.
+"""
+
+
+"""
+TODO (Task 2): Test Critical Section with Static Coordinator
+"""
+
+
+"""
+TODO (Task 3): Test Ricart & Agrawala Mutual Exclusion
+"""
+
+
+"""
+TODO (Task 4): Test Blockchain Probabilistic Access
+"""
+
+
+"""
+TODO (Task 5): Test Longest Chain Resolution
+
+Verify that network partitions and resulting inconsistencies are resolved
+using the longest chain rule.
+"""

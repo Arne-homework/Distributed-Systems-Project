@@ -106,6 +106,13 @@ class Node:
     def get_logical_time(self):
         return self._lamport_clock.value
 
+    def test_get_event_queue(self):
+        """
+        get the event queue.
+        Intended for testing/debugging only.
+        """
+        return self._event_queue
+
     def is_crashed(self):
         return self.status["crashed"]
 
@@ -249,7 +256,7 @@ class Node:
             else:
                 self._request_queue.append(message)
         else:
-            self._reply_queue.append(message)
+            self._request_queue.append(message)
 
     def _request_critical_section(self, event):
         self._status = Node.REQUESTING_STATUS
