@@ -170,11 +170,20 @@ class Node:
     def _apply_event(self, event):
         try:
             if event.action == "create":
-                self.board.add_entry(event.entry_id, event.value)
+                try:
+                    self.board.add_entry(event.entry_id, event.value)
+                except KeyError:
+                    self.board.update_entry(event.entry_id, event.value)
             elif event.action == "update":
-                self.board.update_or_create_entry(event.entry_id, event.value)
+                try:
+                    self.board.update_entry(event.entry_id, event.value)
+                except KeyError:
+                    self.board.add_entry(event.entry_id, event.value)
             elif event.action == "delete":
-                self.board.delete_entry(event.entry_id)
+                try:
+                    self.board.delete_entry(event.entry_id)
+                except KeyError:
+                    pass
             else:
                 raise Exception("unknown event")
         except Exception:

@@ -21,39 +21,47 @@ class Board:
         self._entry_number = 0
         self._indexed_entries = {}
 
-    def add_entry(self, id, value):
+    def add_entry(self, entry_id: str, value: str):
         """ add a new entry to the board.
 
-        raises an IndexError if the entry already exists.
+        raises an KeyError if the entry already exists.
         """
-        if id in self._indexed_entries:
-            raise IndexError(f"entry {id} already exists")
+        if entry_id in self._indexed_entries:
+            raise KeyError(f"entry {entry_id} already exists")
         else:
-            self._indexed_entries[id] = Entry(self._entry_number, id, value)
+            self._indexed_entries[entry_id] = Entry(
+                self._entry_number,
+                entry_id,
+                value)
             self._entry_number += 1
 
-    def update_or_create_entry(self, id, value):
+    def update_entry(self, entry_id: str, value: str):
         """
-        either updates an existing entry or creates the entry anew.
-        """
-        if id in self._indexed_entries:
-            self._indexed_entries[id].value = value
-        else:
-            self.add_entry(id, value)
+        updates an entry.
 
-    def delete_enty(self, id):
+        raises an KeyError if the entry doesn't yet exist.
+        """
+        try:
+            self._indexed_entries[entry_id].value = value
+        except KeyError:
+            raise KeyError(
+                f"Entry {entry_id} doesn't exist yet and can't be updated.")
+
+    def delete_entry(self, id):
         """
         deletes an entry.
 
-        raises an IndexError if the entry doesn't exist.
+        raises an KeyError if the entry doesn't exist.
         """
         try:
-            del self._indexed_entry[id]
-        except IndexError:
-            raise IndexError(f"No entry with id {id}")
+            del self._indexed_entries[id]
+        except KeyError:
+            raise KeyError(f"No entry with id {id}")
 
     def get_ordered_entries(self):
-        return sorted(list(self._indexed_entries.values()), key=lambda e: e.number)
+        return sorted(
+            list(self._indexed_entries.values()),
+            key=lambda e: e.number)
 
     def get_number_of_entries(self):
         return len(self._indexed_entries)
