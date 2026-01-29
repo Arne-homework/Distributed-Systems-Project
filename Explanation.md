@@ -26,3 +26,32 @@ If a node recieves a request message it returns a reply message if,
    tiebreaker)
    
 Otherwiese the request is queued and replied to when the node reenters the "Idle" state.
+
+
+
+### Blockchain
+
+A Node implementation for the use of a blockchain was implemented in
+node_blockchain.py. 
+
+Again events were used as our implementation of Transactions. 
+
+A node collects all events recieved since its last created block and forges a
+block of them. Different from the template, but in line with real world
+implementations, node then checks if the last (binary) digits of the hash of
+the block are zero and if so, accepts the block as valid and sends it to the
+other nodes.
+
+If two nodes concurrently forge a block, the blockchain has a side chain of
+equal length and some nodes pick one or the other chain leading to
+inconsistencies. However when a new block if forged, the forging node picks
+one chain and extends it. As soon as the new block is propagated to all other
+nodes, one of the chains is longer and all nodes agree now on the longer
+chain, leading to consistency again. 
+
+Other than Ricart & Agravala the approach does not enter a guaranteed
+exclusive critical section, but instead randomly enters a critical section,
+with the chance being low enough that it is unlikely that two nodes enter the
+critical section concurrently. Also different from Agravala, nodes only send a
+single message to propagate a new block instead of requireing 4 sequential
+messages. (If the messages needed to guarantee delivery are ignored).
