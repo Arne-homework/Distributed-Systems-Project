@@ -125,11 +125,6 @@ class Node:
         Create a new entry
           with a globally unique ID and propagate it to all other nodes.
 
-        In this lab, there is no coordinator.
-          Each node can create entries independently,
-          and must propagate them to all other nodes
-          using a gossip-style protocol.
-
         @param value the value of the newly created entry
         """
         event_id = self._event_id_generator.generate()

@@ -50,6 +50,10 @@ class Event:
             dict_["action"],
             dict_["value"])
 
+    def to_str(self):
+        return (f";{self._event_id};{self._entry_id};"
+                f"{self._action};{self._value};")
+
     def to_dict(self):
         return {"event_id": self._event_id,
                 "entry_id": self._entry_id,

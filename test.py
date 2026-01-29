@@ -16,6 +16,7 @@ from transport import Transport, UnreliableTransport
 from messenger import ReliableMessenger
 from clock import clock_server, ExternalDeterminedClock
 from node import Node
+import node_blockchain as nb
 
 logging.basicConfig(stream=sys.stdout, level=logging.ERROR, force=True)
 
@@ -184,6 +185,77 @@ def test_ricart_agravala():
         print("\n>>>  CONSISTENCY TEST FAILED <<<")
 
 
+def test_critical_section_blockchain():
+    print("\n" + "=" * 60)
+    print("TASK 4: Blockchain: Probabilistic Access ")
+    print("=" * 60)
+
+    clock_server.set_clock_factory(lambda n: ExternalDeterminedClock())
+
+    r = random.Random(100)
+    log_difficulty = 4
+    nodes = [
+        nb.Node(
+            ReliableMessenger(
+                i,
+                NUM_SERVERS,
+                timeout=1.0),
+            i,
+            NUM_SERVERS,
+            log_difficulty,
+            r) for i in range(NUM_SERVERS)]
+    transports = create_transports(nodes, SCENARIO, r)
+
+    current_time = 0.0
+    print("1. Creating Entries Node 0")
+
+    for i in range(NUM_ENTRIES):
+        nodes[0].create_entry(f"Entry {i}")
+    current_time = run_simulation(
+        nodes,
+        transports,
+        actions=[],
+        duration_seconds=SIM_DURATION,
+        start_time=current_time)
+
+    if check_consistency(nodes, NUM_ENTRIES):
+        print("\n>>>  CONSISTENCY TEST PASSED <<<")
+    else:
+        print("\n>>>  CONSISTENCY TEST FAILED <<<")
+
+
+def test_blockchain():
+    print("\n" + "=" * 60)
+    print("TASK 4b: The blockchain")
+    print("=" * 60)
+
+    clock_server.set_clock_factory(lambda n: ExternalDeterminedClock())
+
+    log_difficulty = 10
+    r = random.Random(100)
+    nodes = [nb.Node(ReliableMessenger(i, NUM_SERVERS, timeout=2.0), i, NUM_SERVERS, log_difficulty, r) for i in range(NUM_SERVERS)]
+    transports = create_transports(nodes, SCENARIO, r)
+
+    current_time = 0.0
+    print("1. Creating Entries on all Nodes in parallel...")
+    entry_ids = []
+    for inode, node in enumerate(nodes):
+        for ientry in range(NUM_ENTRIES):
+            node.create_entry(f"Entry {ientry}-{inode}")
+    current_time = run_simulation(
+        nodes,
+        transports,
+        duration_seconds=SIM_DURATION,
+        start_time=current_time)
+
+    
+    if (check_consistency(nodes, len(nodes[0].get_entries()))):
+        print("\n>>>  CONSISTENCY TEST PASSED <<<")
+    else:
+        print("\n>>>  CONSISTENCY TEST FAILED <<<")
+
+
+
 if __name__ == "__main__":
     start_real_time = time.time()
 
@@ -196,7 +268,9 @@ if __name__ == "__main__":
     print("=" * 60)
 
 #    test_critical_section()
-    test_ricart_agravala()
+#    test_ricart_agravala()
+#    test_critical_section_blockchain()
+    test_blockchain()
     end_real_time = time.time()
     total_real_time = end_real_time - start_real_time
 
